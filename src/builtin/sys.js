@@ -9,6 +9,8 @@ var $builtinmodule = function(name)
     sys.argv = new Sk.builtins['list'](args);
 
     sys.copyright = Sk.builtin['str']("Copyright 2009-2010 Scott Graham.\nAll Rights Reserved.\n");
+    
+    sys.version_info = Sk.builtin['tuple']([2, 7, 6, 'final', 0]);
 
     sys.modules = Sk.sysmodules;
 
