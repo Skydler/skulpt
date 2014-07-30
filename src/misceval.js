@@ -20,7 +20,8 @@ Sk.misceval.asIndex = function(o)
     if (typeof o === "number") return o;
 	if (o.constructor === Sk.builtin.nmber) return o.v;
 	if (o.constructor === Sk.builtin.lng) return o.tp$index();
-    goog.asserts.fail("todo asIndex;");
+  if(o.constructor === Sk.builtin.bool) return Sk.builtin.asnum$(o);
+  goog.asserts.fail("todo asIndex;");
 };
 
 /**
@@ -87,9 +88,15 @@ Sk.misceval.arrayFromArguments = function(args)
         // this is a Sk.builtin.list
         arg = Sk.builtin.dict.prototype['keys'].func_code(arg);
     }
-    else if ( arg instanceof Sk.builtin.str )
+
+    // shouldn't else if here as the above may output lists to arg.
+    if ( arg instanceof Sk.builtin.list || arg instanceof Sk.builtin.tuple )
     {
-        // this is a Sk.builtin.str
+        return arg.v;
+    }
+    else if ( arg.tp$iter !== undefined )
+    {
+        // handle arbitrary iterable (strings, generators, etc.)
         var res = [];
         for (var it = arg.tp$iter(), i = it.tp$iternext();
              i !== undefined; i = it.tp$iternext())
@@ -99,12 +106,7 @@ Sk.misceval.arrayFromArguments = function(args)
         return res;
     }
 
-    // shouldn't else if here as the above may output lists to arg.
-    if ( arg instanceof Sk.builtin.list || arg instanceof Sk.builtin.tuple )
-    {
-        return arg.v;
-    }
-    return args;
+    throw new Sk.builtin.TypeError("'" + Sk.abstr.typeName(arg) + "' object is not iterable");
 };
 goog.exportSymbol("Sk.misceval.arrayFromArguments", Sk.misceval.arrayFromArguments);
 
@@ -612,27 +614,27 @@ Sk.misceval.apply = function(func, kwdict, varargseq, kws, args)
             if (!func.co_varnames) {
                 throw new Sk.builtin.ValueError("Keyword arguments are not supported by this function")
             }
-    
+
             //number of positionally placed optional parameters
             var numNonOptParams = func.co_numargs - func.co_varnames.length;
             var numPosParams = args.length - numNonOptParams;
-            
+
             //add defaults
             args = args.concat(func.$defaults.slice(numPosParams));
-            
+
             for(var i = 0; i < kws.length; i = i + 2) {
                 var kwix = func.co_varnames.indexOf(kws[i]);
-                
+
                 if(kwix === -1) {
                     throw new Sk.builtin.TypeError("'" + kws[i] + "' is an invalid keyword argument for this function");
-                } 
-                
+                }
+
                 if (kwix < numPosParams) {
                     throw new Sk.builtin.TypeError("Argument given by name ('" + kws[i] + "') and position (" + (kwix + numNonOptParams + 1) + ")");
                 }
-                
-                args[kwix + numNonOptParams] = kws[i + 1];  
-            }  
+
+                args[kwix + numNonOptParams] = kws[i + 1];
+            }
         }
         //append kw args to args, filling in the default value where none is provided.
         return func.apply(null, args);
