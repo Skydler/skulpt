@@ -98,6 +98,16 @@ Compiler.prototype.annotateSource = function(ast)
 
 		out("\nSk.currLineNo = ",lineno, ";\nSk.currColNo = ",col_offset,"\n\n");	//	Added by RNL
 		out("\nSk.currFilename = '",this.filename,"';\n\n");	//	Added by RNL
+        /*out("\
+print(Object.keys($gbl));\
+for (var i in $gbl) {\
+    print(i, $gbl[i].v, typeof $gbl[i], Object.keys($gbl[i]));\
+}\
+");*/
+        out("\nif (typeof Sk.afterSingleExecution == 'function') {\n\tSk.afterSingleExecution($gbl);\n}\n");
+        //out("\ntry {\n\tSk.afterSingleExecution("+this.st.stss[2].name+");\n} catch (e) {\n\talert(e);\n}");
+        //out("\ntry {\n\tSk.afterSingleExecution("+this.st.stss[2].name+");\n} catch (e) {\n\talert(e);\n}");
+        
     }
 };
 
