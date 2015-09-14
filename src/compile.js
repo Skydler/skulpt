@@ -1777,21 +1777,13 @@ Compiler.prototype.cgenexpgen = function (generators, genIndex, elt) {
     this._jump(start);
     this.setBlock(start);
 
-    this.annotateSource(elt);
-
     // load targets
-    out ("$ret = Sk.abstr.iternext(", iter,(this.u.canSuspend?", true":", false"),");");
-
-    this._checkSuspension(elt);
-
-    nexti = this._gr("next", "$ret");
+    nexti = this._gr("next", "Sk.abstr.iternext(", iter, ")");
     this._jumpundef(nexti, end); // todo; this should be handled by StopIteration
     target = this.vexpr(ge.target, nexti);
 
     n = ge.ifs.length;
     for (i = 0; i < n; ++i) {
-        this.annotateSource(ge.ifs[i]);
-
         ifres = this.vexpr(ge.ifs[i]);
         this._jumpfalse(ifres, start);
     }
@@ -1801,8 +1793,6 @@ Compiler.prototype.cgenexpgen = function (generators, genIndex, elt) {
     }
 
     if (genIndex >= generators.length) {
-        this.annotateSource(elt);
-
         velt = this.vexpr(elt);
         out("return [", skip, "/*resume*/,", velt, "/*ret*/];");
         this.setBlock(skip);
@@ -2253,7 +2243,7 @@ Compiler.prototype.cmod = function (mod) {
 
     var entryBlock = this.newBlock("module entry");
     this.u.prefixCode = "var " + modf + "=(function($modname){";
-    this.u.varDeclsCode = "var $gbl = {}, $blk=" + entryBlock + ",$exc=[],$loc=$gbl,$err=undefined;$gbl.__name__=$modname;var $ret=undefined,currLineNo=undefined,currColNo=undefined;";
+    this.u.varDeclsCode = "var $gbl = {}, $blk=" + entryBlock + ",$exc=[],$loc=$gbl,$err=undefined;$gbl.__name__=$modname,$ret=undefined,currLineNo=undefined,currColNo=undefined;";
     if (Sk.execLimit !== null) {
         this.u.varDeclsCode += "if (typeof Sk.execStart === 'undefined') {Sk.execStart = Date.now()}";
     }

@@ -14,4 +14,3 @@ test/namedtests.js
 .settings
 /.c9revisions
 Vagrantfile
-v8.log

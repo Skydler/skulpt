@@ -30,6 +30,33 @@ var $builtinmodule = function(name)
                   {'temperature': 65, 'humidity':   0, 'wind': 15}, {'temperature': 81, 'humidity': 0, 'wind': 4},
                   {'temperature': 70, 'humidity':  30, 'wind': 17}, {'temperature': 84, 'humidity': 30, 'wind': 9},
                   {'temperature': 73, 'humidity': 30, 'wind': 8}, {'temperature': 88, 'humidity': 30, 'wind': 4}]
+/*
+    'BLACKSBURG':[{'temperature': 30, 'humidity':  20, 'wind':  3}, {'temperature': 25, 'humidity': 50, 'wind': 10},
+                  {'temperature': 29, 'humidity': 100, 'wind':  5}, {'temperature': 18, 'humidity': 90, 'wind': 15},
+                  {'temperature': 24, 'humidity':  30, 'wind': 19}, {'temperature': 14, 'humidity':  0, 'wind': 28},
+                  {'temperature':  7, 'humidity':   0, 'wind': 12}, {'temperature':  0, 'humidity':  0, 'wind': 14},
+                  {'temperature': 12, 'humidity':   0, 'wind':  4}, {'temperature':  2, 'humidity': 60, 'wind':  0}],
+    'SEATTLE':   [{'temperature': 56, 'humidity': 100, 'wind':  7}, {'temperature': 37, 'humidity': 100, 'wind': 9},
+                  {'temperature': 55, 'humidity': 100, 'wind':  9}, {'temperature': 40, 'humidity': 100, 'wind': 3},
+                  {'temperature': 54, 'humidity':  80, 'wind': 10}, {'temperature': 43, 'humidity':  70, 'wind': 6},
+                  {'temperature': 52, 'humidity':  40, 'wind':  7}, {'temperature': 42, 'humidity':  20, 'wind': 7},
+                  {'temperature': 51, 'humidity':  80, 'wind':  2}, {'temperature': 41, 'humidity': 100, 'wind': 2}],
+    'MIAMI':     [{'temperature': 70, 'humidity': 20, 'wind': 12}, {'temperature': 69, 'humidity': 40, 'wind': 14},
+                  {'temperature': 71, 'humidity': 20, 'wind': 15}, {'temperature': 71, 'humidity': 20, 'wind': 17},
+                  {'temperature': 68, 'humidity':  0, 'wind': 11}, {'temperature': 64, 'humidity': 20, 'wind':  9},
+                  {'temperature': 77, 'humidity':  0, 'wind':  8}, {'temperature': 72, 'humidity':  0, 'wind': 10},
+                  {'temperature': 79, 'humidity':  0, 'wind':  5}, {'temperature': 73, 'humidity':  0, 'wind':  3}],
+    'SANJOSE':   [{'temperature': 65, 'humidity': 0, 'wind': 10}, {'temperature': 48, 'humidity': 0, 'wind': 11},
+                  {'temperature': 66, 'humidity': 0, 'wind': 13}, {'temperature': 43, 'humidity': 0, 'wind':  6},
+                  {'temperature': 68, 'humidity': 0, 'wind':  7}, {'temperature': 42, 'humidity': 0, 'wind':  8},
+                  {'temperature': 67, 'humidity': 0, 'wind':  3}, {'temperature': 43, 'humidity': 0, 'wind':  4},
+                  {'temperature': 70, 'humidity': 0, 'wind':  2}, {'temperature': 44, 'humidity': 0, 'wind':  5}],
+    'NEWYORK':   [{'temperature': 5, 'humidity':   50, 'wind':  5}, {'temperature': 8, 'humidity':  40, 'wind': 10},
+                  {'temperature': 8, 'humidity':   80, 'wind': 27}, {'temperature': 3, 'humidity':  90, 'wind': 17},
+                  {'temperature': 2, 'humidity':   90, 'wind': 15}, {'temperature': 1, 'humidity': 100, 'wind': 4},
+                  {'temperature': 9, 'humidity':  100, 'wind': 17}, {'temperature': 5, 'humidity': 100, 'wind': 9},
+                  {'temperature': -4, 'humidity': 100, 'wind': 8}, {'temperature': -10, 'humidity': 100, 'wind': 4}]
+*/
     };
     function normalize_city(city) {
         switch (city.toLowerCase()) {

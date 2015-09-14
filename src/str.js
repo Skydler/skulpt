@@ -1,4 +1,4 @@
-Sk.builtin.interned = {};
+var interned = {};
 
 /**
  * @constructor
@@ -51,14 +51,16 @@ Sk.builtin.str = function (x) {
     }
 
     // interning required for strings in py
-    if (Sk.builtin.interned["1" + ret]) {
-        return Sk.builtin.interned["1" + ret];
+    if (Object.prototype.hasOwnProperty.call(interned, "1" + ret)) {
+        // note, have to use Object to avoid __proto__, etc.
+        // failing
+        return interned["1" + ret];
     }
 
     this.__class__ = Sk.builtin.str;
     this.v = ret;
     this["v"] = this.v;
-    Sk.builtin.interned["1" + ret] = this;
+    interned["1" + ret] = this;
     return this;
 
 };

@@ -1590,6 +1590,7 @@ jsplotlib.ones = function(N) {
 };
 
 // Skulpt translation
+
 var $builtinmodule = function(name) {
     var mod = {};
     var chart;
@@ -1640,6 +1641,7 @@ var $builtinmodule = function(name) {
             plot(y)           # plot y using x as index array 0..N-1
             plot(y, 'r+')     # ditto, but with red plusses
         */
+
 
         // variable definitions for args
         var xdata = [];
@@ -2420,3 +2422,4 @@ var $builtinmodule = function(name) {
 
     return mod;
 };
+
