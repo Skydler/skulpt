@@ -620,7 +620,7 @@ class Tifa(ast.NodeVisitor):
                 self.report_issue("Malformed Conditional")
         
         # Visit the bodies
-        this_path_id = self.path_id
+        this_path_id = self.path_chain[0]
         if_path = Tifa.NewPath(self, this_path_id, "i")
         with if_path:
             for statement in node.body:
