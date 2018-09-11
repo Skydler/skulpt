@@ -21,7 +21,7 @@ class StretchyTreeMatcher:
         else:
             self.rootNode = EasyNode(ast_node, "none")
 
-    def find_matches(self, other, filename="__main__", check_meta=True):
+    def find_matches(self, other, filename="__main__", check_meta=True, cut=False):
         # TODO: check that both are ast nodes at the module level
         if isinstance(other, str):
             other_tree = ast.parse(other, filename)
@@ -31,7 +31,13 @@ class StretchyTreeMatcher:
             easy_other = other_tree
         else:
             easy_other = EasyNode(other_tree, "none")
-        return self.any_node_match(self.rootNode, easy_other, check_meta=check_meta)
+        explore_root = self.rootNode
+        if cut and (self.rootNode is not None):
+            while len(explore_root.children) == 1:
+                explore_root = explore_root.children[0]
+                explore_root.field = "none"
+        # return self.any_node_match(self.rootNode, easy_other, check_meta=check_meta)
+        return self.any_node_match(explore_root, easy_other, check_meta=check_meta, cut=cut)
 
     '''
     Finds whether ins_node can be matched to some node in the tree std_node
@@ -39,25 +45,37 @@ class StretchyTreeMatcher:
     matching does not exist
     '''
 
-    def any_node_match(self, ins_node, std_node, check_meta=True):
+    def any_node_match(self, ins_node, std_node, check_meta=True, cut=False):
         # @TODO: create a more public function that converts ins_node and std_node into EasyNodes
+        # TODO: Create exhaustive any_node_match
         # matching: an object representing the mapping and the symbol table
         matching = self.deep_find_match(ins_node, std_node, check_meta)
         # if a direct matching is found
         if matching:
             for match in matching:
                 match.match_root = std_node
-                match.match_lineno = match.mappings.values[1].lineno
-            return matching  # return it
-        else:  # otherwise
-            # try to matching ins_node to each child of std_node, recursively
-            for std_child in std_node.children:
-                matching = self.any_node_match(ins_node, std_child, check_meta=check_meta)
-                if matching:
-                    for match in matching:
-                        match.match_root = std_child
+                if len(match.mappings.values) > 1:
+                    match.match_lineno = match.mappings.values[1].lineno
+                else:
+                    match.match_lineno = match.mappings.values[0].lineno
+        else:
+            matching = []
+        #    return matching  # return it
+        # if not matching or exhaust:  # otherwise
+        # try to matching ins_node to each child of std_node, recursively
+        for std_child in std_node.children:
+            matching_c = self.any_node_match(ins_node, std_child, check_meta=check_meta, cut=cut)
+            if matching_c:
+                for match in matching_c:
+                    match.match_root = std_child
+                    if len(match.mappings.values) > 1:
                         match.match_lineno = match.mappings.values[1].lineno
-                    return matching
+                    else:
+                        match.match_lineno = match.mappings.values[0].lineno
+                # return matching
+                matching = matching + matching_c
+        if len(matching) > 0:
+            return matching
         return False
 
     def deep_find_match(self, ins_node, std_node, check_meta=True):
@@ -81,13 +99,13 @@ class StretchyTreeMatcher:
         wild_card = re.compile('^___$')  # /regex
         mapping = AstMap()
         matched = False
-        meta_matched = (check_meta and ins_node.field == std_node.field) or not check_meta
+        meta_matched = self.metas_match(ins_node, std_node, check_meta)
         if var_match.match(name_id) and meta_matched:  # if variable
             # This if body is probably unnecessary.
             if type(std_node.astNode).__name__ == "Name":
                 return self.deep_find_match_generic(ins_node, std_node, check_meta)
         # could else return False, but shallow_match_generic should do this as well
-        elif exp_match.match(name_id) and meta_matched:  # if expression
+        elif exp_match.match(name_id):  # and meta_matched:  # if expression
             # terminate recursion, the whole subtree should match since expression nodes match to anything
             mapping.add_exp_to_sym_table(ins_node, std_node)
             matched = True
@@ -155,6 +173,39 @@ class StretchyTreeMatcher:
                 return False
             return new_mappings
         return False
+
+    def deep_find_match_Expr(self, ins_node, std_node, check_meta=True):
+        """
+        An Expression node (not to be confused with expressions denoted by the instructor nodes in Name ast nodes)
+        checks whether it should be generic, or not
+        :param ins_node: Instructor ast to find in the student ast
+        :param std_node: Student AST to search for the instructor ast in
+        :param check_meta: flag to check whether the fields of the instructor node and the student node should match
+        :return: a mapping between the instructor and student asts, or False if such a mapping doesn't exist
+        """
+        # if check_meta and ins_node.field != std_node.field:
+        if not self.metas_match(ins_node, std_node, check_meta):
+            return False
+        mapping = AstMap()
+        value = ins_node.value
+        ast_type = type(value.astNode).__name__
+        if ast_type == "Name":
+            name_id = value.astNode.id
+            exp_match = re.compile('^__.*__$')  # /regex
+            wild_card = re.compile('^___$')  # /regex
+            matched = False
+            meta_matched = self.metas_match(ins_node, std_node, check_meta)
+            if exp_match.match(name_id):  # and meta_matched:  # if expression
+                # terminate recursion, the whole subtree should match since expression nodes match to anything
+                mapping.add_exp_to_sym_table(value, std_node)
+                matched = True
+            elif wild_card.match(name_id) and meta_matched:  # if wild card, don't care
+                # terminate the recursion, the whole subtree should match since wild cards match to anything
+                matched = True
+            if matched:
+                mapping.add_node_pairing(ins_node, std_node)
+                return [mapping]
+        return self.deep_find_match_generic(ins_node, std_node, check_meta)
 
     def deep_find_match_generic(self, ins_node, std_node, check_meta=True):
         """
@@ -262,7 +313,7 @@ class StretchyTreeMatcher:
         wild_card = re.compile('^___$')  # /regex
         mapping = AstMap()
         matched = False
-        meta_matched = (check_meta and ins_node.field == std_node.field) or not check_meta
+        meta_matched = self.metas_match(ins_node, std_node, check_meta)
         if var_match.match(name_id) and meta_matched:  # variable
             if type(std_node.astNode).__name__ == "Name":
                 mapping.add_var_to_sym_table(ins_node, std_node)  # TODO: Capture result?
@@ -289,7 +340,8 @@ class StretchyTreeMatcher:
         :param check_meta: flag to check whether the fields of the instructor node and the student node should match
         :return: a mapping between the isntructor and student asts, or False if such a mapping doesn't exist
         """
-        if check_meta and ins_node.field != std_node.field:
+        # if check_meta and ins_node.field != std_node.field:
+        if not self.metas_match(ins_node, std_node, check_meta):
             return False
         mapping = AstMap()
         mapping.add_node_pairing(ins_node, std_node)
@@ -303,9 +355,10 @@ class StretchyTreeMatcher:
         :param ins_node: Instructor ast to find in the student ast
         :param std_node: Student AST to search for the instructor ast in
         :param check_meta: flag to check whether the fields of the instructor node and the student node should match
-        :return: a mapping between the isntructor and student asts, or False if such a mapping doesn't exist
+        :return: a mapping between the instructor and student asts, or False if such a mapping doesn't exist
         """
-        if check_meta and ins_node.field != std_node.field:
+        # if check_meta and ins_node.field != std_node.field:
+        if not self.metas_match(ins_node, std_node, check_meta):
             return False
         mapping = AstMap()
         mapping.add_node_pairing(ins_node, std_node)
@@ -324,7 +377,7 @@ class StretchyTreeMatcher:
         std = std_node.astNode
         ins_field_list = list(ast.iter_fields(ins))
         std_field_list = list(ast.iter_fields(std))
-        meta_matched = (check_meta and ins_node.field == std_node.field) or not check_meta
+        meta_matched = self.metas_match(ins_node, std_node, check_meta)
         is_match = len(ins_field_list) == len(std_field_list) and type(ins).__name__ == type(
             std).__name__ and meta_matched
         for insTup, stdTup in zip(ins_field_list, std_field_list):
@@ -369,3 +422,9 @@ class StretchyTreeMatcher:
         method_name = 'shallow_match_' + type(ins_node.astNode).__name__
         target_func = getattr(self, method_name, self.shallow_match_generic)
         return target_func(ins_node, std_node, check_meta)
+
+    @staticmethod
+    def metas_match(ins_node, std_node, check_meta=True):
+        return (check_meta and ins_node.field == std_node.field) or not check_meta or ins_node.field == "none"
+
+    # TODO: Possibly add a feature for variable function names?

@@ -36,60 +36,69 @@ def missing_append_in_iteration():
 
 def missing_append_in_iteration():
     matches = find_matches("for ___ in ___:\n"
-                           "    ___.append(___)")
-    if not matches:
-        explain("You must construct a list by appending values one at a time to the list."
-                "<br><br><i>(app_in_iter)<i></br>")
-        return True
+                           "    __expr__")
+    if matches:
+        for match in matches:
+            __expr__ = match.exp_table.get("__expr__")
+            submatch = find_expr_sub_matches("___.append(___)", __expr__, cut=True)
+            if not submatch:
+                explain("You must construct a list by appending values one at a time to the list."
+                        "<br><br><i>(app_in_iter)<i></br>")
+                return True
     return False
 
 
 def wrong_not_append_to_list():
     matches = find_matches("for ___ in ___:\n"
-                           "    _target_.append(___)")
+                           "    __expr__")
     if matches:
         for match in matches:
-            _target_ = match.symbol_table.get("_target_")[0].astNode
-            if not data_type(_target_).is_instance(list):
-                explain("Values can only be appended to a list. The property <code>{0!s}</code> is either not "
-                        "initialized, not initialized correctly, or is confused with another property.<br><br><i>"
-                        "(app_not_list)<i></br>".format(_target_.id))
-                return True
+            __expr__ = match.exp_table.get("__expr__")
+            submatches = find_expr_sub_matches("_target_.append(___)", __expr__, cut=True)
+            if submatches:
+                for submatch in submatches:
+                    _target_ = submatch.symbol_table.get("_target_")[0].astNode
+                    if not data_type(_target_).is_instance(list):
+                        explain("Values can only be appended to a list. The property <code>{0!s}</code> is either "
+                                "not initialized, not initialized correctly, or is confused with another property."
+                                "<br><br><i>(app_not_list)<i></br>".format(_target_.id))
+                        return True
     return False
 
 
 def missing_append_list_initialization():
-    std_ast = parse_program()
-    for_loops = std_ast.find_all("For")
-    loop_appends = []
-    for loop in for_loops:
-        loop_appends.extend(find_append_in(loop))
-    assignments = std_ast.find_all("Assign")
-    for append_call in loop_appends:
-        append_loc = append_call.lineno
-        append_var = append_call.func.value
-        found_init = False
-        for assignment in assignments:
-            if assignment.has(append_var) and assignment.lineno < append_loc:
-                found_init = True
-                break
-        if not found_init and append_var.id != "___":
-            explain("The list property <code>{0!s}</code> must be initialized.<br><br><i>"
-                    "(no_app_list_init)<i></br>".format(append_var.id))
-            return True
+    matches = find_matches("for ___ in ___:\n"
+                           "    __expr__")
+    if matches:
+        for match in matches:
+            __expr__ = match.exp_table.get("__expr__")
+            submatches = find_expr_sub_matches("_new_list_.append(___)", __expr__, cut=True)
+            if submatches:
+                for submatch in submatches:
+                    _new_list_ = submatch.symbol_table.get("_new_list_")[0].astNode
+                    matches02 = find_matches("{} = []\n"
+                                             "for ___ in ___:\n"
+                                             "    __expr__".format(_new_list_.id))
+                    if not matches02:
+                        explain("The list property <code>{0!s}</code> must be initialized.<br><br><i>"
+                                "(no_app_list_init)<i></br>".format(_new_list_.id))
+                        return True
     return False
 
 
 def wrong_append_list_initialization():
-    matches = find_matches("_list_ = __expr__\n"
+    matches = find_matches("_list_ = __expr1__\n"
                            "for ___ in ___:\n"
-                           "    _list_.append(___)")
+                           "    __expr2__")
     if matches:
         for match in matches:
             _list_ = match.symbol_table.get("_list_")[0].astNode
-            __expr__ = match.exp_table.get("__expr__")
-            if (__expr__.ast_name == "List" and len(__expr__.elts) != 0 or
-               __expr__.ast_name != "List"):
+            __expr1__ = match.exp_table.get("__expr1__")
+            __expr2__ = match.exp_table.get("__expr2__")
+            submatch = find_expr_sub_matches("{}.append(___)".format(_list_.id), __expr2__, cut=True)
+            if submatch and (__expr1__.ast_name == "List" and
+               len(__expr1__.elts) != 0 or
+               __expr1__.ast_name != "List"):
                 explain("The list property <code>{0!s}</code> is either not initialized correctly or mistaken for"
                         " another property. The list you append to should be initialized to an empty list.<br><br><i>"
                         "(app_list_init)<i></br>".format(_list_.id))
