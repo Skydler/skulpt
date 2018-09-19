@@ -891,7 +891,7 @@ def wrong_filter_condition_10_3():
     if matches:
         for match in matches:
             __expr__ = match.exp_table.get("__expr__")
-            if __expr__.numeric_logic_check(1, "var > 0"):
+            if __expr__.numeric_logic_check(1, "var > 0") or __expr__.numeric_logic_check(1, "var != 0"):
                 return False
         explain('The condition used to filter the year when artists died is not correct.<br><br><i>(filt_10.3)<i></br>')
         return True
