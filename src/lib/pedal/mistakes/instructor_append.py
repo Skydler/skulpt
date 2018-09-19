@@ -117,4 +117,3 @@ def append_list_wrong_slot():
                         "(app_list_slot)<i></br>".format(_item_.id, _target_.id))
                 return True
     return False
-
