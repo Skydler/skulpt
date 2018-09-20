@@ -1,5 +1,3 @@
-
-
 def are_literals_equal(first, second):
     if first is None or second is None:
         return False
@@ -53,5 +51,4 @@ def literal_from_json(val):
     elif val['type'] == 'LiteralNum':
         return LiteralNum(val['value'])
     elif val['type'] == 'LiteralBool':
-        return LiteralBool(val['value'])
-    
+return LiteralBool(val['value'])
