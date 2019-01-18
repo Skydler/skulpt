@@ -1,11 +1,10 @@
 # Built-in imports
 import json
-from textwrap import indent
 import requests
 
 # IPython imports
 from IPython.core.magic import (Magics, magics_class, line_magic, cell_magic)
-from IPython.display import Javascript, display, HTML
+from IPython.display import Javascript, display
 
 # Logging imports
 import os
@@ -57,7 +56,7 @@ def download_on_run(assignment_id):
         return False, str(error)
     try:
         result = response.json()
-    except ValueError as error:
+    except ValueError:
         # Failed to parse the JSON; perhaps it was some text data?
         return False, get_response_error(response)
     if result['success']:
@@ -243,13 +242,17 @@ class GradeMagic(Magics):
             os.makedirs(directory, exist_ok=True)
             logger.logstart(logfname, loghead, 'rotate', True, True,
                             True)
-        except:
+        except BaseException:
             self.shell.logfile = old_logfile
             warn("Couldn't start log: %s" % sys.exc_info()[1])
 
     @line_magic
     def grade_logstop(self, line=""):
         self.shell.logger.logstop()
+        self.shell.run_code("print = __builtins__.print")
+        self.shell.run_code("input = __builtins__.input")
+        self.shell.run_code("sum = __builtins__.sum")
+        # self.shell.reset(new_session=False)
 
     def logging(self):
         # ######Logging
@@ -262,7 +265,7 @@ class GradeMagic(Magics):
         try:
             logger.logstart(logfname, loghead, 'rotate', False, True,
                             True)
-        except:
+        except BaseException:
             self.shell.logfile = old_logfile
             warn("Couldn't start log: %s" % sys.exc_info()[1])
         logger.timestamp = False
@@ -292,7 +295,7 @@ class GradeMagic(Magics):
         # Concatenate the JS code and then execute it by displaying it
         code = EXTRACT_STUDENT_CODE
         code += ANIMATE_LAST_CELL
-        code += BLOCKPY_GRADE.format(assignment=assignment, 
+        code += BLOCKPY_GRADE.format(assignment=assignment,
                                      inputs=json.dumps(inputs))
         code += EXECUTE_CODE
         # self.logging()
@@ -307,7 +310,7 @@ def load_ipython_extension(ipython):
     ipython.register_magics(GradeMagic)
 
 
-"""    
+"""
 DEPRECATED: The following lines of code do not seem to be necessary to
             register this plugin with Jupyter.
 def _jupyter_server_extension_paths():

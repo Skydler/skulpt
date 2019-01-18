@@ -1,124 +1,35 @@
-'''
-
-queue_inputs(*args)
-reset_output()
-get_output()
-run_student()
-^ All of these work on a Sandbox object already prepared
-
-run_code => Sandbox
-run_file => Sandbox
-
-Methods
-    __init__
-    Sandbox.run
-    Sandbox.call
-Fields
-    data
-    output
-    raw_output
-    exception
-    inputs
-Internals
-    _temporaries
-    _backups
-
-Execution arguments:
-    _as_filename='__main__'
-    _modules=None
-    _inputs=None
-    _example=None
-    _threaded=False
-
-Common desires:
-
-Run a file with student's code
-run(filename)
-    run('canvas_analyzer.py') -> execute main function
-    load('canvas_analyzer'.py) -> Do not execute main function
-    
-    *args: positional arguments
-    **kwargs: named arguments
-    
-    _parameters or _arguments ?: {str : ANY}
-    _modules: {str : ANY}
-    _inputs: [str] or generator
-    _example: str
-    _filename: str
-    _threaded: bool
-
-Run the given string as code
-run(code)
-
-Run a specific function from the students' code
-run(function_name)
-    student = run('canvas_analyzer.py')
-    student.run('main')
-    student_print_user = report.run('print_user')
-
-Run the code/function again, but under different circumstances
-    run('canvas_analyzer.py')
-
-Run with the given stdin, parameters, or global variables
-    run(code, _inputs=['first', 'second', 'third'])
-    run(code, _inputs=special_input_function)
-    run(code, parameters={'first_argument': 5})
-    run(code, first_argument=5)
-    
-    run(code, _globals={})
-    Default stdin is a special generator that just keeps returning values
-
-Disable certain modules, built-in functions
-    student = run('canvas_analyzer.py', _modules=)
-
-Provide alternative implementation for certain modules
-    MatPlotLib should be able to be swapped out
-    time.sleep becomes pass
-
-Handle the output, variables, exceptions, or global state
-    output vs. raw_output: get formatted lines or 
-    
-    
-
-Give an explanation of the run:
-    Have a default explanation based on the values given, but allow a symbolic
-    explanation too.
-    
-Ensure student has the right version of a file based on hashes, and ensure
-    that student has not modified the files
-Minimum python version
-
-Handle golden files?
-
-String normalization for improved comparisons
-'''
-
 from pprint import pprint
 import ast
 import re
-import types
 import sys
 import io
 import os
+import string
 from unittest.mock import patch, mock_open, MagicMock
-import traceback
 
 from pedal.report import MAIN_REPORT
 from pedal.sandbox import mocked
+from pedal.sandbox.exceptions import (SandboxTraceback, SandboxHasNoFunction,
+                                      SandboxHasNoVariable, _add_context_to_error)
 from pedal.sandbox.timeout import timeout
-    
+from pedal.sandbox.messages import EXTENDED_ERROR_EXPLANATION
+from pedal.sandbox.result import SandboxResult
+from pedal.sandbox.tracer import (SandboxCallTracer, SandboxCoverageTracer,
+                                  SandboxBasicTracer)
+
 def _dict_extends(d1, d2):
     '''
     Helper function to create a new dictionary with the contents of the two
     given dictionaries. Does not modify either dictionary, and the values are
-    copied shallowly. If there are repeates, the second dictionary wins ties.
-    
+    copied shallowly. If there are repeats, the second dictionary wins ties.
+
     The function is written to ensure Skulpt compatibility.
-    
+
     Args:
         d1 (dict): The first dictionary
         d2 (dict): The second dictionary
-    
+    Returns:
+        dict: The new dictionary
     '''
     d3 = {}
     for key, value in d1.items():
@@ -127,203 +38,17 @@ def _dict_extends(d1, d2):
         d3[key] = value
     return d3
 
-_REJECT_TRACEBACK_FILE_PATTERN = re.compile(r'[./]')
-    
-class Sandbox:
-    '''
-    '''
-    
-    # Hooks for pre/post execution. If set to be callable functions, they will
-    # be executed before and after execution (regardless of its success)
-    pre_execution = None
-    post_execution = None
 
+class DataSandbox:
     '''
-    student.raw_output: string
-    student.output: list of string/objects
-    student.variables: dict
-    student.functions: dict (only callables)
+    Simplistic Mixin class that contains the functions for accessing a
+    self-contained student data namespace.
     '''
-    def __init__(self, data=None, raw_output=None, exception=None, 
-                 filename="__main__", modules=None):
-        # data
-        if data is None:
-            data = {}
-        self.data = data
-        # Update outputs
-        self.set_output(raw_output)
-        # filename
-        self.filename = filename
-        # Temporary data
-        self.temporaries = set()
-        self.backups = {}
-        # Exception
-        self.exception = exception
-        self.exception_position = None
-        # Input
-        self.inputs = None
-        # Modules
-        self.setup_mocks(modules)
-        
-    def setup_mocks(self, modules):
-        self.mocked_modules = {}
-        self.modules = {}
-        # MatPlotLib's PyPlot
-        fake_module = types.ModuleType('matplotlib')
-        fake_module.pyplot = types.ModuleType('pyplot')
-        self.mocked_modules['matplotlib'] = fake_module
-        self.mocked_modules['matplotlib.pyplot'] = fake_module.pyplot
-        mock_plt = mocked.MockPlt()
-        mock_plt._add_to_module(fake_module.pyplot)
-        self.modules['matplotlib.pyplot'] = mock_plt
-    
-    @property
-    def functions(self):
-        return {k:v for k,v in self.data.items() if callable(v)}
-    
-    def set_output(self, raw_output):
-        if raw_output is None:
-            self.raw_output = ""
-            self.output = []
-        else:
-            self.raw_output = raw_output
-            lines = raw_output.rstrip().split("\n")
-            self.output = [line.rstrip() for line in lines]
-    
-    def append_output(self, raw_output):
-        self.raw_output += raw_output
-        lines = raw_output.rstrip().split("\n")
-        self.output += [line.rstrip() for line in lines]
-    
-    def set_input(self, inputs):
-        if isinstance(inputs, tuple):
-            self.inputs = _make_inputs(*inputs)
-        else:
-            self.inputs = inputs
-        
-    def purge_temporaries(self):
-        ''' delete any data that have been made as temporaries '''
-        for key in self.temporaries:
-            if key in self.backups:
-                self.data[key] = self.backups[key]
-            else:
-                del self.data[key]
-    
-    def make_temporary(self, category, name, value):
-        key = '_temporary_{}_{}'.format(category, name)
-        if key in self.data:
-            self.backups[key] = self.data[key]
-        self.temporaries.add(key)
-        self.data[key] = value
-        return key
-    
-    def run_file(filename, _as_filename=None, _modules=None, _inputs=None, 
-             _example=None, _threaded=False):
-        '''
-        Load the given filename.
-        '''
-        if _as_filename is None:
-            _as_filename = filename
-        with open(filename, 'r') as code_file:
-            code = code_file.read() + '\n'
-        self.run(code, _as_filename, _modules, _inputs, _example, _threaded)
-    
-    def call(self, function, *args, **kwargs):
-        # Make sure it's a valid function in the namespace (TODO: but what?)
-        if function not in self.functions:
-            pass
-        _arguments = kwargs.pop('_arguments', {})
-        _as_filename = kwargs.pop('_as_filename', self.filename)
-        target = kwargs.pop('_target', '_')
-        _modules = kwargs.pop('_modules', {})
-        _inputs = kwargs.pop('_inputs', self.inputs)
-        _example = kwargs.pop('_example', None)
-        _threaded = kwargs.pop('_threaded', False)
-        # With all the special args done, the remainder are regular kwargs
-        kwargs = _dict_extends(_arguments, kwargs)
-        # Create the actual arguments and call
-        args = [self.make_temporary('arg', index, value)
-                for index, value in enumerate(args)]
-        kwargs = ["{}={}".format(key, self.make_temporary('kwarg', key, value))
-                  for key, value in kwargs.items()]
-        arguments = ", ".join(args+kwargs)
-        call = "{} = {}({})".format(target, function, arguments)
-        self.run(call, _as_filename, _modules, _inputs, _example, _threaded)
-        self._ = self.data[target]
-        return self._
-    
-    def run(self, code, _as_filename=None, _modules=None, _inputs=None, 
-            _example=None, _threaded=False):
-        '''
-        _arguments=None, _as_filename=None, 
-            _target = '_', _modules=None, _inputs=None, _example=None, 
-            _threaded=False, 
-        '''
-        if _as_filename is None:
-            _as_filename = self.filename
-        if _inputs is None:
-            if self.inputs is None:
-                _inputs = _make_inputs('0', repeat='0')
-            else:
-                _inputs = self.inputs
-        else:
-            _inputs = _make_inputs(*_inputs)
-        # Execute
-        mocked._override_builtins(self.data, {
-            'compile':   mocked._disabled_compile,
-            'eval':      mocked._disabled_eval,
-            'exec':      mocked._disabled_exec,
-            'globals':   mocked._disabled_globals,
-            'open':      mocked._restricted_open,
-            'input':     _inputs,
-            'raw_input': _inputs,
-            'sys':       sys,
-            'os':        os
-        })
-        # Redirect stdout/stdin as needed
-        old_stdout = sys.stdout
-        old_stdin = sys.stdin
-        capture_stdout = io.StringIO()
-        #injectin = io.StringIO(inputs)
-        sys.stdout = capture_stdout
-        #sys.stdin = injectin
-        self.exception = None
-        self.exception_position = None
-        
-        if callable(self.pre_execution):
-            self.pre_execution()
-        
-        try:
-            # Calling compile instead of just passing the string source to exec
-            # ensures that we get meaningul filenames in the traceback when
-            # tests fail or have errors.
-            with patch.dict('sys.modules', self.mocked_modules):
-                compiled_code = compile(code, _as_filename, 'exec')
-                exec(compiled_code, self.data)
-        except StopIteration:
-            input_failed = True
-            result= None
-        except Exception as e:
-            '''if example is None:
-                code = _demonstrate_call(a_function, parameters)
-            else:
-                code = example
-            _raise_improved_error(e, code)'''
-            self.exception = e
-            cl, exc, tb = sys.exc_info()
-            line_number = traceback.extract_tb(tb)[-1][1]
-            self.exception_position = {'line': line_number}
-            if str(e) == "module 'sys' has no attribute 'modules'":
-                old_stdout.write("\n".join(traceback.format_tb(tb))+"\n")
-        finally:
-            sys.stdout = old_stdout
-            #sys.stdin = old_stdin
-            if callable(self.post_execution):
-                self.post_execution()
-        self.append_output(capture_stdout.getvalue())
-        # Clean up
-        self.purge_temporaries()
-    
+
+    def __init__(self):
+        super().__init__()
+        self.data = {}
+
     def get_names_by_type(self, type, exclude_builtins=True):
         result = []
         for name, value in self.data.items():
@@ -332,51 +57,517 @@ class Sandbox:
                     continue
                 result.append(name)
         return result
-    
+
     def get_values_by_type(self, type, exclude_builtins=True):
         names = self.get_names_by_type(type, exclude_builtins)
         return [self.data[name] for name in names]
 
-def _threaded_execution(code, filename, inputs=None):
-    pass
-    
-def _make_inputs(*input_list, **kwargs):
-    '''
-    Helper function for creating mock user input.
-    
-    Params:
-        input_list (list of str): The list of inputs to be returned
-    Returns:
-        function (str=>str): The mock input function that is returned, which
-                             will return the next element of input_list each
-                             time it is called.
-    '''
-    if 'repeat' in kwargs:
-        repeat = kwargs['repeat']
-    else:
-        repeat = None
-    generator = iter(input_list)
-    def mock_input(prompt=''):
-        print(prompt)
-        try:
-            return next(generator)
-        except StopIteration as SI:
-            if repeat is None:
-                # TODO: Make this a custom exception
-                raise SI
-            else:
-                return repeat
-    return mock_input
+    def get_variables_by_type(self, type, exclude_builtins=True):
+        names = self.get_names_by_type(type, exclude_builtins)
+        return [(name, self.data[name]) for name in names]
 
-if __name__ == "__main__":
-    code = """
-import matplotlib.pyplot as plt
-print(plt.secret)
-"""
-    (student_locals, output) = run(code)
-    for name, value in student_locals.items():
-        if name == "__builtins__":
-            print(name, ":", "Many things:", len(value))
-        else:
-            print(name, ":", value)
+    @property
+    def functions(self):
+        '''
+        Retrieve a list of all the callable names in the students' namespace.
+        In other words, get a list of all the functions the student defined.
+
+        Returns:
+            list of callables
+        '''
+        return {k: v for k, v in self.data.items() if callable(v)}
+
+
+class Sandbox(DataSandbox):
+    '''
+
+    The Sandbox is a container that can safely execute student code and store
+    the result.
+
+    Attributes:
+        data: The namespace produced by the students' code. This is basically
+            a dictionary mapping valid python names to their values.
+        raw_output (str): The exact literal results of all the `print` calls
+            made so far, including the "\n" characters.
+        output (list of str): The current lines of output, broken up by
+            distinct print calls (not "\n" characters). Note that this will
+            not have any "\n" characters unless you explicitly printed them.
+        called_output (dict[str:list[str]]): The output for each call context.
+        call_id (int): The current call_id of the most recent call. Is
+            initially 0, indicating the original sandbox creation.
+        modules: A dictionary of the mocked modules (accessible by their
+            imported names).
+        context: A list of strings representing the code previously run through
+            this sandbox via .call.
+        contextualize (bool): Whether or not to contextualize stack frames.
+    '''
     
+    CONTEXT_MESSAGE = (
+        "\n\nThe error above occurred when I ran:<br>\n<pre>{context}</pre>"
+    )
+    TRACER_STYLES = {
+        'coverage': SandboxCoverageTracer,
+        'calls': SandboxCallTracer,
+        'none': SandboxBasicTracer,
+    }
+
+    def __init__(self, initial_data=None,
+                 initial_raw_output=None,
+                 initial_exception=None,
+                 modules=None, full_traceback=False,
+                 tracer_style='none',
+                 threaded=False, report=None,
+                 context=None, result_proxy=SandboxResult,
+                 instructor_filename="instructor_tests.py"):
+        '''
+        Args:
+            initial_data (dict[str:Any]): An initial namespace to provide when
+                executing the students' code. The keys must be strings and
+                should be valid Python names. Defaults to None, which will be
+                an empty namespace.
+            initial_exception (Exception): An initial exception to load into
+                the Sandbox. Usually you will let the students' code generate
+                its own exceptions, but if you're constructing a sandbox you
+                might need to specify one. Defaults to None.
+            modules: A dictionary of strings (valid python package names) that
+                map to either the value True (if we provide a default
+                implementation) or a user-created MockedModule. By default,
+                we mock out the following modules:
+                * matplotlib
+                * pedal
+            context (False, None, or list[str]): How to contextualize calls by
+                default in this Sandbox. False means no contextualization.
+                None (default) means contextualize automatically. If you give
+                a list[str], then it assumes you want to contextualize
+                automatically but starting off with the given strings.
+            initial_raw_output (str): The initial printed output for the
+                sandbox. Usually defaults to None to indicate a blank printed
+                area.
+            instructor_filename (str): The filename to display in tracebacks,
+                when executing student code in instructor tests. Although you
+                can specify something else, defaults to "instructor_tests.py".
+        '''
+        super().__init__()
+        if initial_data is None:
+            initial_data = {}
+        self.data = initial_data
+
+        # Context
+        self.call_id = 0
+        self.call_contexts = {}
+        self.context = context
+        # Update outputs
+        self.set_output(initial_raw_output)
+        # filename
+        self.instructor_filename = instructor_filename
+        # Temporary data
+        self._temporaries = set()
+        self._backups = {}
+        # Exception
+        self.exception = initial_exception
+        self.exception_position = None
+        self.report_exceptions_mode = False
+        # Input
+        self.inputs = None
+        # Modules
+        if modules is None:
+            modules = {'matplotlib': True, 
+                       'pedal': mocked.MockPedal()}
+        self.mocked_modules = {}
+        self.modules = {}
+        self.add_mocks(modules)
+        # Patching
+        self._current_patches = []
+        # Settings
+        self.full_traceback = full_traceback
+        self.MAXIMUM_VALUE_LENGTH = 120
+        # Tracer Styles
+        self.trace = self.TRACER_STYLES[tracer_style.lower()]()
+        # Proxying results
+        self.result_proxy = result_proxy
+        # report
+        if report is None:
+            report = MAIN_REPORT
+        self.report = report
+        # Threading
+        self.threaded = threaded
+        self.allowed_time = 1
+
+    def add_mocks(self, modules):
+        '''
+        :param modules: Keyword listing of modules and their contents
+                        (MockedModules) or True (if its one that we have a
+                        default implementation for).
+        :type modules: dict
+        '''
+        for module_name, module_data in modules.items():
+            self._add_mock(module_name, module_data)
+
+    def _add_mock(self, module_name, module_data):
+        # MatPlotLib's PyPlot
+        if module_name == 'matplotlib':
+            matplotlib, modules = mocked.create_module('matplotlib.pyplot')
+            self.mocked_modules.update(modules)
+            if module_data is True:
+                mock_plt = mocked.MockPlt()
+                mock_plt._add_to_module(matplotlib.pyplot)
+                self.modules['matplotlib.pyplot'] = mock_plt
+            else:
+                module_data._add_to_module(matplotlib.pyplot)
+        else:
+            root, modules = mocked.create_module(module_name)
+            self.mocked_modules.update(modules)
+            self.modules[module_name] = module_data
+            module_data._add_to_module(root)
+
+    def set_output(self, raw_output):
+        '''
+        Change the current printed output for the sandbox to the given value.
+        If None is given, then clears all the given output (empty list for
+        `output` and empty string for `raw_output`).
+
+        Args:
+            raw_output (str): The new raw_output for the sandbox. To compute
+                the `output` attribute, the system splits and rstrips at
+                newlines.
+        '''
+        if raw_output is None:
+            #:
+            self.raw_output = ""
+            self.output = []
+            self.called_output = {self.call_id: self.output}
+        else:
+            self.raw_output = raw_output
+            lines = raw_output.rstrip().split("\n")
+            self.output = [line.rstrip() for line in lines]
+            self.called_output[self.call_id] = self.output
+
+    def append_output(self, raw_output):
+        '''
+        Adds the string of `raw_output` to the current `raw_output` attribute.
+        The added string will be split on newlines and rstripped to append
+        to the `output` attribute.
+
+        Args:
+            raw_output (str): The new raw_output for the sandbox. To compute
+                the `output` attribute, the system splits and rstrips at
+                newlines.
+        '''
+        self.raw_output += raw_output
+        lines = raw_output.rstrip().split("\n")
+        lines = [line.rstrip() for line in lines]
+        self.output.extend(lines)
+
+    def set_input(self, inputs):
+        '''
+        Queues the given value as the next arguments to the `input` function.
+        '''
+        if isinstance(inputs, tuple):
+            self.inputs = mocked._make_inputs(*inputs)
+        else:
+            self.inputs = inputs
+
+    def _purge_temporaries(self):
+        '''
+        Delete any variables in the namespace that have been made as
+        temporaries. This happens automatically after you execute code.
+        '''
+        for key in self._temporaries:
+            if key in self._backups:
+                self.data[key] = self.backups[key]
+            else:
+                del self.data[key]
+        self._temporaries = set()
+
+    def _make_temporary(self, category, name, value):
+        '''
+        Create a temporary variable in the namespace for the given
+        category/name. This is used to load arguments into the namespace to
+        be used in function calls.
+
+        Args:
+            category (str): A categorical division for the temporary variable
+                that can help keep the namespace distinctive - there are a
+                few different kinds of categories (e.g., for regular positional
+                args, star args, kwargs).
+            name (str): A distinctive ID for this variable. The final variable
+                name will be "_temporary_<category>_<name>".
+            value: The value for this argument.
+        Returns:
+            str: The new name for the temporary variable.
+        '''
+        key = '_temporary_{}_{}'.format(category, name)
+        if key in self.data:
+            self._backups[key] = self.data[key]
+        self._temporaries.add(key)
+        self.data[key] = value
+        return key
+
+    def run_file(filename, as_filename=None, modules=None, inputs=None,
+                 threaded=None, context=None, report_exceptions=None):
+        '''
+        Load the given filename and execute it within the current namespace.
+        
+        Args:
+            context (False, None, or list[str]): The context to give any
+                exceptions. If None, then the recorded context will be used. If
+                a string, tracebacks will be shown with the given context. If
+                False, no context will be given.
+        '''
+        if _as_filename is None:
+            _as_filename = filename
+        with open(filename, 'r') as code_file:
+            code = code_file.read() + '\n'
+        self.run(code, as_filename, modules, inputs, threaded,
+                 context, report_exceptions)
+
+    def call(self, function, *args, **kwargs):
+        '''
+        Args:
+            function (str): The name of the function to call that was defined
+                by the user.
+            as_filename (str): The filename to use when calling this function.
+                Defaults to the instructor filename, since you are calling
+                code on the student's behalf.
+            target (str): The new variable in the namespace to assign to. By
+                default this will be "_". If you use None, then no variable
+                will be assigned to. Note that this could overwrite a variable
+                in the user namespace.
+                TODO: Add a feature to prevent user namespace overwriting.
+            input (list of str): The strings to send in to calls to input.
+                You can also pass in a generator to construct strings
+                dynamically.
+            threaded (bool): Whether or not the function execution should be
+                executed in a separate thread. Defaults to True. This prevents
+                timeouts from occuring in the students' code (a TimeOutError
+                will be thrown after 3 seconds).
+            context (False, None, or list[str]): The context to give any
+                exceptions. If None, then the recorded context will be used. If
+                a string, tracebacks will be shown with the given context. If
+                False, no context will be given.
+        Returns:
+            If the call was successful, returns the result of executing the
+            code. Otherwise, it will return an Exception relevant to the
+            failure (might be a SandboxException, might be a user-space
+            exception).
+        '''
+        # Confirm that the function_name exists
+        if function not in self.functions:
+            if function not in self.data:
+                self.exception = SandboxHasNoVariable(
+                    "The function {function} does not exist.".format(function=function)
+                )
+            else:
+                self.exception = SandboxHasNoFunction(
+                    "The variable {function} is not a function.".format(function=function)
+                )
+            return self.exception
+        # Parse kwargs for any special arguments.
+        as_filename = kwargs.pop('as_filename', self.instructor_filename)
+        target = kwargs.pop('target', '_')
+        modules = kwargs.pop('modules', {})
+        inputs = kwargs.pop('inputs', self.inputs)
+        threaded = kwargs.pop('threaded', self.threaded)
+        context = kwargs.pop('context', self.context)
+        report_exceptions = kwargs.pop('report_exceptions', self.report_exceptions_mode)
+        # Create the actual arguments and call
+        self.call_id += 1
+        self.called_output[self.call_id] = []
+        actual_call, student_call = self._construct_call(function, args, kwargs, target)
+        self.call_contexts[self.call_id] = student_call
+        self.run(actual_call, as_filename, modules, inputs,
+                 threaded=threaded, context=context,
+                 report_exceptions=report_exceptions)
+        self._purge_temporaries()
+        if self.exception is None:
+            self._ = self.data[target]
+            if self.result_proxy is not None:
+                self._ = self.result_proxy(self._, call_id=self.call_id, 
+                                           sandbox=self)
+            return self._
+        else:
+            return self.exception
+    
+    def make_safe_variable(self, name):
+        '''
+        Tries to construct a safe variable name in the current namespace, based
+        off the given one. This is accomplished by appending a "_" and a number
+        of increasing value until no comparable name exists in the namespace.
+        This is particularly useful when you want to create a variable name to
+        assign to, but you are concerned that the user might have a variable
+        with that name already, which their code relies on.
+        
+        Args:
+            name (str): A desired target name.
+        Returns:
+            str: A safe target name, based off the given one.
+        '''
+        current_addition = ""
+        attempt_index = 2
+        while name+current_addition in self.data:
+            current_addition = "_{}".format(attempt_index)
+            attempt_index += 1
+        return name+current_addition
+
+    def _construct_call(self, function, args, kwargs, target):
+        str_args = [self._make_temporary('arg', index, value)
+                    for index, value in enumerate(args)]
+        str_kwargs = ["{}={}".format(key, 
+                                     self._make_temporary('kwarg', key, value))
+                      for key, value in kwargs.items()]
+        arguments = ", ".join(str_args + str_kwargs)
+        call = "{}({})".format(function, arguments)
+        if target is None:
+            actual = call
+        else:
+            actual = "{} = {}".format(target, call)
+        student_call = call if target is "_" else actual
+        return actual, student_call
+    
+    def _start_patches(self, *patches):
+        self._current_patches.append(patches)
+        for patch in patches:
+            patch.start()
+    
+    def _stop_patches(self):
+        patches = self._current_patches.pop()
+        for patch in patches:
+            patch.stop()
+    
+    def _capture_exception(self, exception, exc_info, report_exceptions,
+                           context):
+        self.exception = exception
+        if context is not False:
+            if context is None:
+                context = '\n'.join(list(self.call_contexts.values())[1:])
+            context = self.CONTEXT_MESSAGE.format(context=context)
+            self.exception = _add_context_to_error(self.exception, context)
+        traceback = SandboxTraceback(self.exception, exc_info,
+                                     self.full_traceback,
+                                     self.instructor_filename)
+        self.exception_position = {'line': traceback.line_number}
+        self.exception_formatted = traceback.format_exception()
+        self.exception_name = str(self.exception.__class__)[8:-2]
+        # Do we add the exception to the report?
+        if report_exceptions is False:
+            return True
+        if report_exceptions is None and not self.report_exceptions_mode:
+            return True
+        self.report.attach(self.exception_name,
+                           category='Runtime', tool='Sandbox',
+                           mistake={'message': self.exception_formatted,
+                                    'error': self.exception})
+        return False
+
+    def run(self, code, as_filename=None, modules=None, inputs=None,
+            threaded=None, report_exceptions=True, context=False):
+        '''
+        Execute the given string of code in this sandbox.
+        
+        Args:
+            code (str): The string of code to be executed.
+            as_filename (str): The filename to use when executing the code -
+                this is cosmetic, technically speaking, it has no relation
+                to anything on disk. It will be present in tracebacks.
+                Defaults to Source's filename.
+            modules (dict[str:Module]): Modules to mock.
+            inputs (list[str]): The inputs to give from STDIN, as a list of
+                strings. You can also give a function that emulates the
+                input function; e.g., consuming a prompt (str) and producing
+                strings. This could be used to make a more interactive input
+                system.
+            context (str): The context to give any exceptions.
+                If None, then the recorded context will be used. If a string,
+                tracebacks will be shown with the given context. If False,
+                no context will be given (the default).
+            threaded (bool): whether or not to run this code in a separate
+                thread. Defaults to :attribute:`Sandbox.threaded`.
+            report_exceptions (bool): Whether or not to capture exceptions.
+        '''
+        # Handle any threading if necessary
+        if threaded is None:
+            threaded = self.threaded
+        if threaded:
+            try:
+                return timeout(self.allowed_time, self.run, code, as_filename,
+                               modules, inputs, False,
+                               report_exceptions, context)
+            except TimeoutError as timeout_exception:
+                self._capture_exception(timeout_exception, sys.exc_info(),
+                                        report_exceptions)
+                return self
+        if as_filename is None:
+            as_filename = self.report['source']['filename']
+        if inputs is None:
+            if self.inputs is None:
+                inputs = mocked._make_inputs('0', repeat='0')
+            else:
+                inputs = self.inputs
+        elif isinstance(inputs, (tuple, list)):
+            inputs = mocked._make_inputs(*inputs)
+        # Override builtins and mock stuff out
+        mocked._override_builtins(self.data, {
+            'compile': mocked._disabled_compile,
+            'eval': mocked._disabled_eval,
+            'exec': mocked._disabled_exec,
+            'globals': mocked._disabled_globals,
+            'open': mocked._restricted_open,
+            'input': inputs,
+            'raw_input': inputs,
+            'sys': sys,
+            'os': os
+        })
+        
+        self.exception = None
+        self.exception_position = None
+
+        # Patch in dangerous built-ins
+        capture_stdout = io.StringIO()
+        self._start_patches(
+            patch('sys.stdout', capture_stdout),
+            patch('time.sleep', return_value=None),
+            patch.dict('sys.modules', self.mocked_modules)
+        )
+        # Compile and run student code
+        try:
+            compiled_code = compile(code, as_filename, 'exec')
+            with self.trace._as_filename(as_filename, code):
+                exec(compiled_code, self.data)
+        except Exception as user_exception:
+            self._capture_exception(user_exception, sys.exc_info(),
+                                    report_exceptions, context)
+        finally:
+            self._stop_patches()
+            self.append_output(capture_stdout.getvalue())
+        return self
+
+def run(initial_data=None, initial_raw_output=None, initial_exception=None,
+        modules=None, inputs=None, report_exceptions=True, context=None,
+        full_traceback=False, tracer_style=None, threaded=False,
+        result_proxy=SandboxResult,
+        instructor_filename="instructor_tests.py",
+        code=None, as_filename=None, report=None):
+    if report is None:
+        report = MAIN_REPORT
+    if 'run' not in report['sandbox']:
+        report['sandbox']['settings'] = [
+            initial_data, initial_raw_output, initial_exception, modules,
+            full_traceback, tracer_style, threaded, report, context,
+            result_proxy, instructor_filename
+        ]
+        report['sandbox']['run'] = Sandbox(*report['sandbox']['settings'])
+        
+    sandbox = report['sandbox']['run']
+    if code is None:
+        code = report['source']['code']
+    sandbox.run(code, as_filename, modules, inputs, threaded,
+                report_exceptions, context)
+    return sandbox
+
+def reset(report=None):
+    if report is None:
+        report = MAIN_REPORT
+    if 'settings' in report['sandbox']:
+        report['sandbox']['run'] = Sandbox(*report['sandbox']['settings'])
+    else:
+        run(report=report)

@@ -1,9 +1,25 @@
 from pedal.cait.cait_api import parse_program
 from pedal.report.imperative import gently, explain
-from pedal.toolkit.utilities import ensure_literal
 from pedal.sandbox import compatibility
 
 DELTA = 0.001
+
+
+def all_documented():
+    ast = parse_program()
+    defs = ast.find_all('FunctionDef') + ast.find_all("ClassDef")
+    for a_def in defs:
+        if a_def.name == "__init__":
+            continue
+        if (a_def.body and
+            (a_def.body[0].ast_name != "Expr" or
+             a_def.body[0].value.ast_name != "Str")):
+            if a_def.ast_name == 'FunctionDef':
+                explain("You have an undocumented function: " + a_def.name)
+            else:
+                explain("You have an undocumented class: " + a_def.name)
+            return False
+    return True
 
 
 def get_arg_name(node):
@@ -14,8 +30,23 @@ def get_arg_name(node):
         return name
 
 
-def match_signature(name, length, *parameters):
-    ast = parse_program()
+def match_function(name, root=None):
+    if root is None:
+        ast = parse_program()
+    else:
+        ast = root
+    defs = ast.find_all('FunctionDef')
+    for a_def in defs:
+        if a_def._name == name:
+            return a_def
+    return None
+
+
+def match_signature(name, length, *parameters, report=None, root=None):
+    if root is None:
+        ast = parse_program()
+    else:
+        ast = root
     defs = ast.find_all('FunctionDef')
     for a_def in defs:
         if a_def._name == name:
@@ -65,51 +96,51 @@ def output_test(name, *tests):
                 if isinstance(out, tuple):
                     tip = out[1]
                     out = out[0]
-                message = "<td><code>{}</code></td>"+("<td><pre>{}</pre></td>"*2)
+                message = "<td><code>{}</code></td>" + ("<td><pre>{}</pre></td>" * 2)
                 test_out = compatibility.capture_output(the_function, *inp)
                 if isinstance(out, str):
                     if len(test_out) < 1:
                         message = message.format(inputs, repr(out), "<i>No output</i>", tip)
-                        message = "<tr class=''>"+RED_X+message+"</tr>"
+                        message = "<tr class=''>" + RED_X + message + "</tr>"
                         if tip:
-                            message += "<tr class='info'><td colspan=4>"+tip+"</td></tr>"
+                            message += "<tr class='info'><td colspan=4>" + tip + "</td></tr>"
                         success = False
                     elif len(test_out) > 1:
                         message = message.format(inputs, repr(out), "<i>Too many outputs</i>", tip)
-                        message = "<tr class=''>"+RED_X+message+"</tr>"
+                        message = "<tr class=''>" + RED_X + message + "</tr>"
                         if tip:
-                            message += "<tr class='info'><td colspan=4>"+tip+"</td></tr>"
+                            message += "<tr class='info'><td colspan=4>" + tip + "</td></tr>"
                         success = False
                     elif out not in test_out:
                         message = message.format(inputs, repr(out), repr(test_out[0]), tip)
-                        message = "<tr class=''>"+RED_X+message+"</tr>"
+                        message = "<tr class=''>" + RED_X + message + "</tr>"
                         if tip:
-                            message += "<tr class='info'><td colspan=4>"+tip+"</td></tr>"
+                            message += "<tr class='info'><td colspan=4>" + tip + "</td></tr>"
                         success = False
                     else:
                         message = message.format(inputs, repr(out), repr(test_out[0]), tip)
-                        message = "<tr class=''>"+GREEN_CHECK+message+"</tr>"
+                        message = "<tr class=''>" + GREEN_CHECK + message + "</tr>"
                         success_count += 1
                 elif out != test_out:
                     if len(test_out) < 1:
                         message = message.format(inputs, repr(out), "<i>No output</i>", tip)
                     else:
                         message = message.format(inputs, repr(out), repr(test_out[0]), tip)
-                    message = "<tr class=''>"+RED_X+message+"</tr>"
+                    message = "<tr class=''>" + RED_X + message + "</tr>"
                     if tip:
-                        message += "<tr class='info'><td colspan=4>"+tip+"</td></tr>"
+                        message += "<tr class='info'><td colspan=4>" + tip + "</td></tr>"
                     success = False
                 else:
                     message = message.format(inputs, repr(out), repr(test_out[0]), tip)
-                    message = "<tr class=''>"+GREEN_CHECK+message+"</tr>"
+                    message = "<tr class=''>" + GREEN_CHECK + message + "</tr>"
                     success_count += 1
                 result += message
             if success:
                 return the_function
             else:
                 result = ("I ran your function <code>{}</code> on some new arguments, and it gave the wrong output "
-                          "{}/{} times.".format(name, len(tests)-success_count, len(tests))+result)
-                gently(result+"</table>")
+                          "{}/{} times.".format(name, len(tests) - success_count, len(tests)) + result)
+                gently(result + "</table>")
                 return None
         else:
             gently("You defined {}, but did not define it as a function."
@@ -144,30 +175,30 @@ def unit_test(name, *tests):
                 if isinstance(out, tuple):
                     tip = out[1]
                     out = out[0]
-                message = ("<td><code>{}</code></td>"*3)
+                message = ("<td><code>{}</code></td>" * 3)
                 test_out = the_function(*inp)
                 message = message.format(inputs, repr(test_out), repr(out))
                 if (isinstance(out, float) and
                         isinstance(test_out, (float, int)) and
-                        abs(out-test_out) < DELTA):
-                    message = "<tr class=''>"+GREEN_CHECK+message+"</tr>"
+                        abs(out - test_out) < DELTA):
+                    message = "<tr class=''>" + GREEN_CHECK + message + "</tr>"
                     success_count += 1
                 elif out != test_out:
                     # gently(message)
-                    message = "<tr class=''>"+RED_X+message+"</tr>"
+                    message = "<tr class=''>" + RED_X + message + "</tr>"
                     if tip:
-                        message += "<tr class='info'><td colspan=4>"+tip+"</td></tr>"
+                        message += "<tr class='info'><td colspan=4>" + tip + "</td></tr>"
                     success = False
                 else:
-                    message = "<tr class=''>"+GREEN_CHECK+message+"</tr>"
+                    message = "<tr class=''>" + GREEN_CHECK + message + "</tr>"
                     success_count += 1
                 result += message
             if success:
                 return the_function
             else:
                 result = "I ran your function <code>{}</code> on some new arguments, " \
-                         "and it failed {}/{} tests.".format(name, len(tests)-success_count, len(tests))+result
-                gently(result+"</table>")
+                         "and it failed {}/{} tests.".format(name, len(tests) - success_count, len(tests)) + result
+                gently(result + "</table>")
                 return None
         else:
             gently("You defined {}, but did not define it as a function.".format(name))

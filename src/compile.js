@@ -112,7 +112,7 @@ Compiler.prototype.annotateSource = function (ast, shouldStep) {
 		out("\nSk.currFilename = '",this.filename,"';\n");	//	Added by RNL
         // Do not trace the standard library
         if (shouldStep && (!this.filename || 
-                           goog.string.startsWith(this.filename, 'src/lib/'))) {
+                           !goog.string.startsWith(this.filename, 'src/lib/'))) {
             out("\nif (typeof Sk.afterSingleExecution == 'function') {\n\tSk.afterSingleExecution($gbl, Sk.currLineNo, Sk.currColNo, Sk.currFilename);\n}\n");
         }
         out("$currLineNo = ", lineno, ";\n$currColNo = ", col_offset, ";\n");

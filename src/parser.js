@@ -353,6 +353,24 @@ Sk.parseCache = {
     'lastUnit': null
 }
 
+/*
+parseCache = {}; Sk.parse = function(filename, input) { 
+  if (filename in parseCache) { 
+console.log("REUSING parsed", filename); 
+    return parseCache[filename]; 
+  } else { 
+    if (filename.startsWith("src/lib/pedal/")) {
+console.log("Parsing", filename); 
+      parseCache[filename] = eparse(filename, input);
+      return parseCache[filename];
+    } else {
+console.log("Parsing", filename); 
+      return  eparse(filename, input);
+    }
+}
+                                                      };
+                                                      */
+
 Sk.parse = function parse(filename, input) {
     
     if (Sk.parseCache.lastInput == input) {
