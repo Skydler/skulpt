@@ -13,6 +13,7 @@ class AstSymbol:
         id (str): the name of the variable place holder used by the instructor
         ast_node (cait_node): the ast node of the variable
     """
+
     def __init__(self, _id="", _node=None):
         self.id = _id
         self.astNode = _node
@@ -34,6 +35,7 @@ class AstSymbolList:
     This class is a wrapper for a list of AstSymbols for ease of access
     If accessed as a list, manipulable as a list, otherwise, acts as the first AstSymbol in the list
     """
+
     def __init__(self):
         self.my_list = []
 
@@ -78,14 +80,25 @@ class AstMap:
         if isinstance(ins_node, str):
             key = ins_node
         else:
-            key = ins_node.astNode.name
-        value = AstSymbol(std_node.astNode.name, std_node)
+            try:
+                key = ins_node.astNode.name
+            except AttributeError:
+                key = ins_node.astNode.id
+        try:
+            value = AstSymbol(std_node.astNode.name, std_node)
+        except AttributeError:
+            node = std_node
+            if type(node.astNode).__name__ != "Call":
+                node = node.parent
+                node.id = std_node.id
+            value = AstSymbol(std_node.id, node)
         if key in self.func_table:
             new_list = self.func_table[key]
-            new_list.append(value)
+            if value not in new_list:
+                new_list.append(value)
             if not (key in self.conflict_keys):
                 for other in new_list:
-                    if value.name != other.name:
+                    if value.id != other.id:
                         self.conflict_keys.append(key)
                         break
         else:

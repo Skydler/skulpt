@@ -17,8 +17,9 @@ from pedal.sandbox.result import SandboxResult
 from pedal.sandbox.tracer import (SandboxCallTracer, SandboxCoverageTracer,
                                   SandboxBasicTracer)
 
+
 def _dict_extends(d1, d2):
-    '''
+    """
     Helper function to create a new dictionary with the contents of the two
     given dictionaries. Does not modify either dictionary, and the values are
     copied shallowly. If there are repeats, the second dictionary wins ties.
@@ -30,7 +31,7 @@ def _dict_extends(d1, d2):
         d2 (dict): The second dictionary
     Returns:
         dict: The new dictionary
-    '''
+    """
     d3 = {}
     for key, value in d1.items():
         d3[key] = value
@@ -39,11 +40,17 @@ def _dict_extends(d1, d2):
     return d3
 
 
+class SandboxVariable:
+    def __init__(self, name, value):
+        self.name = name
+        self.value = value
+
+
 class DataSandbox:
-    '''
+    """
     Simplistic Mixin class that contains the functions for accessing a
     self-contained student data namespace.
-    '''
+    """
 
     def __init__(self):
         super().__init__()
@@ -68,18 +75,22 @@ class DataSandbox:
 
     @property
     def functions(self):
-        '''
+        """
         Retrieve a list of all the callable names in the students' namespace.
         In other words, get a list of all the functions the student defined.
 
         Returns:
             list of callables
-        '''
+        """
         return {k: v for k, v in self.data.items() if callable(v)}
+
+    @property
+    def var(self):
+        return {k: SandboxVariable(k, v) for k, v in self.data.items()}
 
 
 class Sandbox(DataSandbox):
-    '''
+    """
 
     The Sandbox is a container that can safely execute student code and store
     the result.
@@ -92,7 +103,7 @@ class Sandbox(DataSandbox):
         output (list of str): The current lines of output, broken up by
             distinct print calls (not "\n" characters). Note that this will
             not have any "\n" characters unless you explicitly printed them.
-        called_output (dict[str:list[str]]): The output for each call context.
+        output_contexts (dict[str:list[str]]): The output for each call context.
         call_id (int): The current call_id of the most recent call. Is
             initially 0, indicating the original sandbox creation.
         modules: A dictionary of the mocked modules (accessible by their
@@ -100,8 +111,8 @@ class Sandbox(DataSandbox):
         context: A list of strings representing the code previously run through
             this sandbox via .call.
         contextualize (bool): Whether or not to contextualize stack frames.
-    '''
-    
+    """
+
     CONTEXT_MESSAGE = (
         "\n\nThe error above occurred when I ran:<br>\n<pre>{context}</pre>"
     )
@@ -119,7 +130,7 @@ class Sandbox(DataSandbox):
                  threaded=False, report=None,
                  context=None, result_proxy=SandboxResult,
                  instructor_filename="instructor_tests.py"):
-        '''
+        """
         Args:
             initial_data (dict[str:Any]): An initial namespace to provide when
                 executing the students' code. The keys must be strings and
@@ -146,7 +157,7 @@ class Sandbox(DataSandbox):
             instructor_filename (str): The filename to display in tracebacks,
                 when executing student code in instructor tests. Although you
                 can specify something else, defaults to "instructor_tests.py".
-        '''
+        """
         super().__init__()
         if initial_data is None:
             initial_data = {}
@@ -154,7 +165,9 @@ class Sandbox(DataSandbox):
 
         # Context
         self.call_id = 0
-        self.call_contexts = {}
+        self.target_contexts = {self.call_id: []}
+        self.call_contexts = {self.call_id: []}
+        self.input_contexts = {self.call_id: []}
         self.context = context
         # Update outputs
         self.set_output(initial_raw_output)
@@ -166,12 +179,13 @@ class Sandbox(DataSandbox):
         # Exception
         self.exception = initial_exception
         self.exception_position = None
+        self.exception_formatted = None
         self.report_exceptions_mode = False
         # Input
         self.inputs = None
         # Modules
         if modules is None:
-            modules = {'matplotlib': True, 
+            modules = {'matplotlib': True,
                        'pedal': mocked.MockPedal()}
         self.mocked_modules = {}
         self.modules = {}
@@ -182,7 +196,7 @@ class Sandbox(DataSandbox):
         self.full_traceback = full_traceback
         self.MAXIMUM_VALUE_LENGTH = 120
         # Tracer Styles
-        self.trace = self.TRACER_STYLES[tracer_style.lower()]()
+        self.tracer_style = tracer_style
         # Proxying results
         self.result_proxy = result_proxy
         # report
@@ -193,13 +207,22 @@ class Sandbox(DataSandbox):
         self.threaded = threaded
         self.allowed_time = 1
 
+    def _set_tracer_style(self, tracer_style):
+        self._tracer_style = tracer_style.lower()
+        self.trace = self.TRACER_STYLES[tracer_style.lower()]()
+
+    def _get_tracer_style(self):
+        return self._tracer_style
+
+    tracer_style = property(_get_tracer_style, _set_tracer_style)
+
     def add_mocks(self, modules):
-        '''
+        """
         :param modules: Keyword listing of modules and their contents
                         (MockedModules) or True (if its one that we have a
                         default implementation for).
         :type modules: dict
-        '''
+        """
         for module_name, module_data in modules.items():
             self._add_mock(module_name, module_data)
 
@@ -221,7 +244,7 @@ class Sandbox(DataSandbox):
             module_data._add_to_module(root)
 
     def set_output(self, raw_output):
-        '''
+        """
         Change the current printed output for the sandbox to the given value.
         If None is given, then clears all the given output (empty list for
         `output` and empty string for `raw_output`).
@@ -230,20 +253,20 @@ class Sandbox(DataSandbox):
             raw_output (str): The new raw_output for the sandbox. To compute
                 the `output` attribute, the system splits and rstrips at
                 newlines.
-        '''
+        """
         if raw_output is None:
             #:
             self.raw_output = ""
             self.output = []
-            self.called_output = {self.call_id: self.output}
+            self.output_contexts = {self.call_id: self.output}
         else:
             self.raw_output = raw_output
             lines = raw_output.rstrip().split("\n")
             self.output = [line.rstrip() for line in lines]
-            self.called_output[self.call_id] = self.output
+            self.output_contexts[self.call_id] = self.output
 
     def append_output(self, raw_output):
-        '''
+        """
         Adds the string of `raw_output` to the current `raw_output` attribute.
         The added string will be split on newlines and rstripped to append
         to the `output` attribute.
@@ -252,26 +275,38 @@ class Sandbox(DataSandbox):
             raw_output (str): The new raw_output for the sandbox. To compute
                 the `output` attribute, the system splits and rstrips at
                 newlines.
-        '''
+        """
         self.raw_output += raw_output
         lines = raw_output.rstrip().split("\n")
         lines = [line.rstrip() for line in lines]
         self.output.extend(lines)
 
     def set_input(self, inputs):
-        '''
+        """
         Queues the given value as the next arguments to the `input` function.
-        '''
+        """
         if isinstance(inputs, tuple):
             self.inputs = mocked._make_inputs(*inputs)
         else:
             self.inputs = inputs
 
+    def _track_inputs(self, inputs):
+        """
+        Wraps an input function with a tracker.
+        """
+
+        def _input_tracker(*args, **kwargs):
+            value_entered = inputs(*args, **kwargs)
+            self.input_contexts[self.call_id].append(value_entered)
+            return value_entered
+
+        return _input_tracker
+
     def _purge_temporaries(self):
-        '''
+        """
         Delete any variables in the namespace that have been made as
         temporaries. This happens automatically after you execute code.
-        '''
+        """
         for key in self._temporaries:
             if key in self._backups:
                 self.data[key] = self.backups[key]
@@ -279,11 +314,15 @@ class Sandbox(DataSandbox):
                 del self.data[key]
         self._temporaries = set()
 
-    def _make_temporary(self, category, name, value):
-        '''
+    def _is_long_value(self, value):
+        return len(repr(value)) > 25
+
+    def _make_temporary(self, category, name, value, context):
+        """
         Create a temporary variable in the namespace for the given
         category/name. This is used to load arguments into the namespace to
-        be used in function calls.
+        be used in function calls. Temporaries are only created if the value's
+        repr length is too long, as defined by _is_long_value.
 
         Args:
             category (str): A categorical division for the temporary variable
@@ -295,17 +334,23 @@ class Sandbox(DataSandbox):
             value: The value for this argument.
         Returns:
             str: The new name for the temporary variable.
-        '''
+        """
+        if isinstance(value, SandboxVariable):
+            return value.name
+        if not self._is_long_value(value):
+            return repr(value)
         key = '_temporary_{}_{}'.format(category, name)
         if key in self.data:
             self._backups[key] = self.data[key]
         self._temporaries.add(key)
         self.data[key] = value
+        if context is None:
+            self.call_contexts[self.call_id].append("{} = {}".format(key, value))
         return key
 
     def run_file(filename, as_filename=None, modules=None, inputs=None,
                  threaded=None, context=None, report_exceptions=None):
-        '''
+        """
         Load the given filename and execute it within the current namespace.
         
         Args:
@@ -313,7 +358,7 @@ class Sandbox(DataSandbox):
                 exceptions. If None, then the recorded context will be used. If
                 a string, tracebacks will be shown with the given context. If
                 False, no context will be given.
-        '''
+        """
         if _as_filename is None:
             _as_filename = filename
         with open(filename, 'r') as code_file:
@@ -321,8 +366,11 @@ class Sandbox(DataSandbox):
         self.run(code, as_filename, modules, inputs, threaded,
                  context, report_exceptions)
 
+    def list(self, *args):
+        pass
+
     def call(self, function, *args, **kwargs):
-        '''
+        """
         Args:
             function (str): The name of the function to call that was defined
                 by the user.
@@ -350,7 +398,7 @@ class Sandbox(DataSandbox):
             code. Otherwise, it will return an Exception relevant to the
             failure (might be a SandboxException, might be a user-space
             exception).
-        '''
+        """
         # Confirm that the function_name exists
         if function not in self.functions:
             if function not in self.data:
@@ -372,24 +420,35 @@ class Sandbox(DataSandbox):
         report_exceptions = kwargs.pop('report_exceptions', self.report_exceptions_mode)
         # Create the actual arguments and call
         self.call_id += 1
-        self.called_output[self.call_id] = []
-        actual_call, student_call = self._construct_call(function, args, kwargs, target)
-        self.call_contexts[self.call_id] = student_call
-        self.run(actual_call, as_filename, modules, inputs,
+        self.target_contexts[self.call_id] = target
+        self.output_contexts[self.call_id] = []
+        self.call_contexts[self.call_id] = []
+        self.input_contexts[self.call_id] = []
+        actual, student = self._construct_call(function, args, kwargs, target,
+                                               context)
+        if context is None:
+            context = student
+        # if context is None:
+        # self.call_contexts[self.call_id].append(student_call)
+        # if context is not False:
+        #    self.call_contexts[self.call_id] = context
+        self.run(actual, as_filename, modules, inputs,
                  threaded=threaded, context=context,
                  report_exceptions=report_exceptions)
         self._purge_temporaries()
         if self.exception is None:
             self._ = self.data[target]
             if self.result_proxy is not None:
-                self._ = self.result_proxy(self._, call_id=self.call_id, 
+                self._ = self.result_proxy(self._, call_id=self.call_id,
                                            sandbox=self)
             return self._
         else:
+            # TODO: Might need to wrap this in case the student was supposed
+            # to return an exception - weird circumstance though
             return self.exception
-    
+
     def make_safe_variable(self, name):
-        '''
+        """
         Tries to construct a safe variable name in the current namespace, based
         off the given one. This is accomplished by appending a "_" and a number
         of increasing value until no comparable name exists in the namespace.
@@ -401,19 +460,19 @@ class Sandbox(DataSandbox):
             name (str): A desired target name.
         Returns:
             str: A safe target name, based off the given one.
-        '''
+        """
         current_addition = ""
         attempt_index = 2
-        while name+current_addition in self.data:
+        while name + current_addition in self.data:
             current_addition = "_{}".format(attempt_index)
             attempt_index += 1
-        return name+current_addition
+        return name + current_addition
 
-    def _construct_call(self, function, args, kwargs, target):
-        str_args = [self._make_temporary('arg', index, value)
+    def _construct_call(self, function, args, kwargs, target, context):
+        str_args = [self._make_temporary('arg', index, value, context)
                     for index, value in enumerate(args)]
-        str_kwargs = ["{}={}".format(key, 
-                                     self._make_temporary('kwarg', key, value))
+        str_kwargs = ["{}={}".format(key,
+                                     self._make_temporary('kwarg', key, value, context))
                       for key, value in kwargs.items()]
         arguments = ", ".join(str_args + str_kwargs)
         call = "{}({})".format(function, arguments)
@@ -423,28 +482,34 @@ class Sandbox(DataSandbox):
             actual = "{} = {}".format(target, call)
         student_call = call if target is "_" else actual
         return actual, student_call
-    
+
     def _start_patches(self, *patches):
         self._current_patches.append(patches)
         for patch in patches:
             patch.start()
-    
+
     def _stop_patches(self):
         patches = self._current_patches.pop()
         for patch in patches:
             patch.stop()
-    
+
     def _capture_exception(self, exception, exc_info, report_exceptions,
                            context):
         self.exception = exception
         if context is not False:
             if context is None:
-                context = '\n'.join(list(self.call_contexts.values())[1:])
+                contexts = [call
+                            for calls in self.call_contexts.values()
+                            for call in calls]
+                context = '\n'.join(contexts[1:])
             context = self.CONTEXT_MESSAGE.format(context=context)
             self.exception = _add_context_to_error(self.exception, context)
+        line_offset = self.report['source'].get('line_offset', 0)
+        student_filename = self.report['source']['filename']
         traceback = SandboxTraceback(self.exception, exc_info,
                                      self.full_traceback,
-                                     self.instructor_filename)
+                                     self.instructor_filename,
+                                     line_offset, student_filename)
         self.exception_position = {'line': traceback.line_number}
         self.exception_formatted = traceback.format_exception()
         self.exception_name = str(self.exception.__class__)[8:-2]
@@ -461,7 +526,7 @@ class Sandbox(DataSandbox):
 
     def run(self, code, as_filename=None, modules=None, inputs=None,
             threaded=None, report_exceptions=True, context=False):
-        '''
+        """
         Execute the given string of code in this sandbox.
         
         Args:
@@ -483,7 +548,7 @@ class Sandbox(DataSandbox):
             threaded (bool): whether or not to run this code in a separate
                 thread. Defaults to :attribute:`Sandbox.threaded`.
             report_exceptions (bool): Whether or not to capture exceptions.
-        '''
+        """
         # Handle any threading if necessary
         if threaded is None:
             threaded = self.threaded
@@ -505,6 +570,9 @@ class Sandbox(DataSandbox):
                 inputs = self.inputs
         elif isinstance(inputs, (tuple, list)):
             inputs = mocked._make_inputs(*inputs)
+        elif isinstance(inputs, str):
+            inputs = mocked._make_inputs(inputs)
+        inputs = self._track_inputs(inputs)
         # Override builtins and mock stuff out
         mocked._override_builtins(self.data, {
             'compile': mocked._disabled_compile,
@@ -517,9 +585,10 @@ class Sandbox(DataSandbox):
             'sys': sys,
             'os': os
         })
-        
+
         self.exception = None
         self.exception_position = None
+        self.exception_formatted = None
 
         # Patch in dangerous built-ins
         capture_stdout = io.StringIO()
@@ -539,11 +608,18 @@ class Sandbox(DataSandbox):
         finally:
             self._stop_patches()
             self.append_output(capture_stdout.getvalue())
+        if context is None:
+            self.call_contexts[self.call_id].append(code)
+        elif isinstance(context, str):
+            self.call_contexts[self.call_id].append(context)
+        elif context is not False:
+            self.call_contexts[self.call_id] = context
         return self
+
 
 def run(initial_data=None, initial_raw_output=None, initial_exception=None,
         modules=None, inputs=None, report_exceptions=True, context=None,
-        full_traceback=False, tracer_style=None, threaded=False,
+        full_traceback=False, tracer_style='none', threaded=False,
         result_proxy=SandboxResult,
         instructor_filename="instructor_tests.py",
         code=None, as_filename=None, report=None):
@@ -556,13 +632,14 @@ def run(initial_data=None, initial_raw_output=None, initial_exception=None,
             result_proxy, instructor_filename
         ]
         report['sandbox']['run'] = Sandbox(*report['sandbox']['settings'])
-        
+
     sandbox = report['sandbox']['run']
     if code is None:
         code = report['source']['code']
     sandbox.run(code, as_filename, modules, inputs, threaded,
                 report_exceptions, context)
     return sandbox
+
 
 def reset(report=None):
     if report is None:

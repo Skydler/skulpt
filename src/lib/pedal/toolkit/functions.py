@@ -1,6 +1,7 @@
 from pedal.cait.cait_api import parse_program
-from pedal.report.imperative import gently, explain
+from pedal.report.imperative import gently, explain, MAIN_REPORT
 from pedal.sandbox import compatibility
+import ast
 
 DELTA = 0.001
 
@@ -12,8 +13,8 @@ def all_documented():
         if a_def.name == "__init__":
             continue
         if (a_def.body and
-            (a_def.body[0].ast_name != "Expr" or
-             a_def.body[0].value.ast_name != "Str")):
+                (a_def.body[0].ast_name != "Expr" or
+                 a_def.body[0].value.ast_name != "Str")):
             if a_def.ast_name == 'FunctionDef':
                 explain("You have an undocumented function: " + a_def.name)
             else:
@@ -42,11 +43,8 @@ def match_function(name, root=None):
     return None
 
 
-def match_signature(name, length, *parameters, report=None, root=None):
-    if root is None:
-        ast = parse_program()
-    else:
-        ast = root
+def match_signature(name, length, *parameters):
+    ast = parse_program()
     defs = ast.find_all('FunctionDef')
     for a_def in defs:
         if a_def._name == name:
@@ -206,3 +204,97 @@ def unit_test(name, *tests):
     else:
         gently("The function <code>{}</code> was not defined.".format(name))
         return None
+
+
+class _LineVisitor(ast.NodeVisitor):
+    """
+    NodeVisitor subclass that visits every statement of a program and tracks
+    their line numbers in a list.
+    
+    Attributes:
+        lines (list[int]): The list of lines that were visited.
+    """
+
+    def __init__(self):
+        self.lines = []
+
+    def _track_lines(self, node):
+        self.lines.append(node.lineno)
+        self.generic_visit(node)
+
+    visit_FunctionDef = _track_lines
+    visit_AsyncFunctionDef = _track_lines
+    visit_ClassDef = _track_lines
+    visit_Return = _track_lines
+    visit_Delete = _track_lines
+    visit_Assign = _track_lines
+    visit_AugAssign = _track_lines
+    visit_AnnAssign = _track_lines
+    visit_For = _track_lines
+    visit_AsyncFor = _track_lines
+    visit_While = _track_lines
+    visit_If = _track_lines
+    visit_With = _track_lines
+    visit_AsyncWith = _track_lines
+    visit_Raise = _track_lines
+    visit_Try = _track_lines
+    visit_Assert = _track_lines
+    visit_Import = _track_lines
+    visit_ImportFrom = _track_lines
+    visit_Global = _track_lines
+    visit_Nonlocal = _track_lines
+    visit_Expr = _track_lines
+    visit_Pass = _track_lines
+    visit_Continue = _track_lines
+    visit_Break = _track_lines
+
+
+def check_coverage(report=None):
+    """
+    Checks that all the statements in the program have been executed.
+    This function only works when a tracer_style has been set in the sandbox,
+    or you are using an environment that automatically traces calls (e.g.,
+    BlockPy).
+    
+    TODO: Make compatible with tracer_style='coverage'
+    
+    Args:
+        report (Report): The Report to draw source code from; if not given,
+            defaults to MAIN_REPORT.
+    Returns:
+        bool or set[int]: If the source file was not parsed, None is returned.
+            If there were fewer lines traced in execution than are found in
+            the AST, then the set of unexecuted lines are returned. Otherwise,
+            False is returned.
+    """
+    if report is None:
+        report = MAIN_REPORT
+    if not report['source']['success']:
+        return None, 0
+    lines_executed = set(compatibility.trace_lines())
+    if -1 in lines_executed:
+        lines_executed.remove(-1)
+    student_ast = report['source']['ast']
+    visitor = _LineVisitor()
+    visitor.visit(student_ast)
+    lines_in_code = set(visitor.lines)
+    if lines_executed < lines_in_code:
+        return lines_in_code - lines_executed, len(lines_executed)/len(lines_in_code)
+    else:
+        return False, 1
+
+def ensure_coverage(percentage=.5, destructive=False, report=None):
+    '''
+    Note that this avoids destroying the current sandbox instance stored on the
+    report, if there is one present.
+    
+    Args:
+        destructive (bool): Whether or not to remove the sandbox.
+    '''
+    if report is None:
+        report = MAIN_REPORT
+    student_code = report['source']['code']
+    unexecuted_lines, percent_covered = check_coverage(report)
+    if unexecuted_lines:
+        if percent_covered <= percentage:
+            explain("Your code coverage is not adequate. You must cover at least half your code to receive feedback.")

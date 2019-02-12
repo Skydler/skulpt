@@ -1,6 +1,6 @@
-'''
+"""
 A package for verifying source code.
-'''
+"""
 
 from pedal.source.sections import *
 from pedal.report import MAIN_REPORT
@@ -16,12 +16,13 @@ OPTIONALS = []
 CATEGORY = 'Syntax'
 
 __all__ = ['NAME', 'DESCRIPTION', 'SHORT_DESCRIPTION', 'REQUIRES', 'OPTIONALS',
-           'set_source', 'count_sections', 'next_section', 'verify_section']
+           'set_source', 'check_section_exists', 'next_section', 'verify_section']
 DEFAULT_PATTERN = r'^(##### Part .+)$'
 
 
-def set_source(code, filename='__main__.py', sections=False, report=None):
-    '''
+def set_source(code, filename='__main__.py', sections=False, independent=False,
+               report=None):
+    """
     Sets the contents of the Source to be the given code. Can also be
     optionally given a filename.
 
@@ -37,11 +38,12 @@ def set_source(code, filename='__main__.py', sections=False, report=None):
                                 will be used: '^##### Part (\\d+)$'
         report (Report): The report object to store data and feedback in. If
                          left None, defaults to the global MAIN_REPORT.
-    '''
+    """
     if report is None:
         report = MAIN_REPORT
     report['source']['code'] = code
     report['source']['filename'] = filename
+    report['source']['independent'] = independent
     report['source']['success'] = True
     if not sections:
         report['source']['sections'] = None
@@ -55,6 +57,7 @@ def set_source(code, filename='__main__.py', sections=False, report=None):
         report.group = 0
         report['source']['section_pattern'] = pattern
         report['source']['section'] = 0
+        report['source']['line_offset'] = 0
         report['source']['sections'] = re.split(pattern, code,
                                                 flags=re.MULTILINE)
         report['source']['code'] = report['source']['sections'][0]
