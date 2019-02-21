@@ -507,7 +507,8 @@ def unnecessary_cast(cast_list):
 
 
 def fetch_acc_dict(values):
-    message = "The code to fetch the dictionary, <code>{}.{}</code> cannot be used to select data."
+    message = ("The code to fetch the list of dictionaries, <code>{}.{}</code>, cannot be used to select data. "
+               "Selection of data should be done with an if statement")
     code = "fetch_acc"
 
     matches = find_matches("_var_._func_[__str__]")
