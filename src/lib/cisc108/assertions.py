@@ -167,6 +167,9 @@ def assert_equal(x, y, precision=4, exact_strings=False, *args):
     student_tests.successes += 1
     return True
 
+# Hack to allow anyone with an assert_equal reference to get the results
+#   since they are global across all calls. Weird strategy!
+assert_equal.student_tests = student_tests
 
 def _is_equal(x, y, precision, exact_strings, *args):
     """
