@@ -424,7 +424,7 @@ def profile(fn="", process=True, output=""):
     Sk.configure({syspath:["%s"], read:read, python3:false, debugging:false});
     Sk.misceval.asyncToPromise(function() {
         return Sk.importMain("%s", true, true);
-    }).then(function () {
+    }).then(function (data) {
         print("-----");
     }, function(e) {
         print("UNCAUGHT EXCEPTION: " + e);
@@ -1208,7 +1208,9 @@ Sk.misceval.asyncToPromise(function() {
     // Source code
     //  input
     print("-----");
+    print(JSON.stringify(data.$d));
     //print(outputList)
+    process.exit()
 }, function(e) {
     print("UNCAUGHT EXCEPTION: " + e);
     //print(e.traceback);

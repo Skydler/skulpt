@@ -271,6 +271,11 @@ if (COMPILED) {
  */
 Sk.importModuleInternal_ = function (name, dumpJS, modname, suppliedPyBody, relativeToPackage, returnUndefinedOnNotFound, canSuspend) {
     //dumpJS = true;
+    /* TODO: temporary hack, need to delete! */
+    if (name == 'pedal.sandbox.sandbox') {
+        suppliedPyBody= 'class Sandbox: pass\ndef run(): pass\ndef reset(): pass';
+    }
+    /* End hack */
     var filename;
     var prev;
     var parentModName;

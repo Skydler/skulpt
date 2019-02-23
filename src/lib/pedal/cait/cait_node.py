@@ -337,7 +337,7 @@ class CaitNode:
         matcher = stm.StretchyTreeMatcher(pattern, report=self.report)
         if (not is_node and not is_mod) and len(matcher.root_node.children) != 1:
             raise ValueError("pattern does not evaluate to a singular statement")
-        return matcher.find_matches(self, check_meta=False)
+        return matcher.find_matches(self, check_meta=True)
 
     def find_match(self, pattern, is_mod=False):
         matches = self.find_matches(pattern, is_mod)
@@ -489,12 +489,13 @@ class CaitNode:
             Value of node if Num or Str, and get_data_state if Name
         """
         value = None
-        if self.ast_name == "Num":
+        if self.is_ast("Num"):
             value = self.n
-        elif self.ast_name == "Str":
+        elif self.is_ast("Str"):
             value = self.s
-        elif self.ast_name == "Name":
-            value = self.get_data_state()
+        elif self.is_ast("Name"):
+            # TODO: Decide on what this should return...
+            value = self.id
         return value
 
 
