@@ -16,9 +16,9 @@ def all_documented():
                 (a_def.body[0].ast_name != "Expr" or
                  a_def.body[0].value.ast_name != "Str")):
             if a_def.ast_name == 'FunctionDef':
-                explain("You have an undocumented function: " + a_def.name)
+                gently("You have an undocumented function: " + a_def.name)
             else:
-                explain("You have an undocumented class: " + a_def.name)
+                gently("You have an undocumented class: " + a_def.name)
             return False
     return True
 
@@ -297,4 +297,28 @@ def ensure_coverage(percentage=.5, destructive=False, report=None):
     unexecuted_lines, percent_covered = check_coverage(report)
     if unexecuted_lines:
         if percent_covered <= percentage:
-            explain("Your code coverage is not adequate. You must cover at least half your code to receive feedback.")
+            gently("Your code coverage is not adequate. You must cover at least half your code to receive feedback.")
+            return False
+    return True
+
+def ensure_cisc108_tests(test_count, report=None):
+    student = compatibility.get_student_data()
+    if 'assert_equal' not in student.data:
+        gently("You have not imported assert_equal from the cisc108 module.")
+        return False
+    assert_equal = student.data['assert_equal']
+    if not hasattr(assert_equal, 'student_tests'):
+        gently("The assert_equal function has been modified. Do not let it be overwritten!",
+               label="Assertion Function Corrupted")
+        return False
+    student_tests = assert_equal.student_tests
+    if student_tests.tests == 0:
+        gently("You are not unit testing the result.", label="No Student Unit Tests")
+        return False
+    elif student_tests.tests < test_count:
+        gently("You have not written enough unit tests.", label="Not Enough Student Unit Tests")
+        return False
+    elif student_tests.failures > 0:
+        gently("Your unit tests are not passing.", label="Student Unit Tests Failing")
+        return False
+    return True
