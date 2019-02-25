@@ -100,8 +100,28 @@ MESSAGE_GENERIC_FAILURE = (
     "FAILURE{context}, predicted answer was {y!r}, "
     "computed answer was {x!r}.")
 MESSAGE_GENERIC_SUCCESS = (
-    "SUCCESS{context}")
+    "TEST PASSED{context}")
 
+class StudentTestReport:
+    def __init__(self):
+        self.reset()
+    def __repr__(self):
+        return str(self)
+    def __str__(self):
+        return ('<failures={failures}'
+                ',successes={successes}'
+                ',tests={tests},lines={lines}>'
+        ).format(
+            failures=self.failures, successes=self.successes, tests=self.tests,
+            lines=', '.join(self.lines)
+        )
+    def reset(self):
+        self.failures = 0
+        self.successes = 0
+        self.tests = 0
+        self.lines = []
+    
+student_tests = StudentTestReport()
 
 def assert_equal(x, y, precision=4, exact_strings=False, *args):
     """
@@ -128,20 +148,28 @@ def assert_equal(x, y, precision=4, exact_strings=False, *args):
         context = ""
     else:
         context = MESSAGE_LINE_CODE.format(line=line, code=code)
+        student_tests.lines.append(line)
 
     result = _is_equal(x, y, precision, exact_strings, *args)
+    student_tests.tests += 1
     if result is None:
+        student_tests.failures += 1
         print(MESSAGE_UNRELATED_TYPES.format(context=context,
                                              x=x, x_type=make_type_name(x),
                                              y=y, y_type=make_type_name(y)))
         return False
     elif not result:
+        student_tests.failures += 1
         print(MESSAGE_GENERIC_FAILURE.format(context=context, x=x, y=y))
         return False
     elif not QUIET:
         print(MESSAGE_GENERIC_SUCCESS.format(context=context))
+    student_tests.successes += 1
     return True
 
+# Hack to allow anyone with an assert_equal reference to get the results
+#   since they are global across all calls. Weird strategy!
+assert_equal.student_tests = student_tests
 
 def _is_equal(x, y, precision, exact_strings, *args):
     """
