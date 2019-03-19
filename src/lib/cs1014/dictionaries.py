@@ -207,9 +207,9 @@ def dict_access_not_in_loop():
                            "    __exp__")
     for match in matches:
         submatches = match["__exp__"].find_matches("_var_[__str__]")
-        if not submatches:
-            return explain_r(message, code, tldr)
-    return False
+        if submatches:
+            return False
+    return explain_r(message, code, tldr)
 
 
 def hard_coded_list(val_list):
@@ -485,7 +485,7 @@ def var_key(keys):
 def key_order(keys):
     message = "It looks like you aren't using the correct keys, or the correct key order. Double check your data map."
     code = "key_order_c"
-    tldr = "Worng key order"
+    tldr = "Wrong key order"
 
     construct = None
     find_chain = "_var_"
@@ -636,8 +636,7 @@ def dict_plot():
     for match in matches:
         _var_ = match["_var_"]
         var_type = str(_var_.get_data_state().type)
-        subtype = str(_var_.get_data_state().type.subtype)
-        if var_type == "ListType" and subtype == "DictType":
+        if var_type == "ListType" and str(_var_.get_data_state().type.subtype) == "DictType":
             return explain_r(message.format(_var_.id), code, tldr)
     return False
 
