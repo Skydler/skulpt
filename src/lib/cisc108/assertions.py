@@ -2,6 +2,9 @@
 CISC106 Module that includes some basic helper functions such as assert_equal().
 
 Versions:
+0.2.1 - 2019-JAN-23, Austin Cory Bart
+ + Keep track of tests' counts in student_tests
+ + Improve make_type_name for BlockPy compatibility
 0.2 - 2019-JAN-02, Modified by Austin Cory Bart
  + Renamed functions to be in line with common Python convention
  + Packaged into an actual library on PyPI, with tests and stuff.
@@ -45,7 +48,7 @@ Versions:
 0.1
  + Initial assert_equal, display, animate, bind
 '''
-__version__ = '0.2'
+__version__ = '0.2.1'
 
 # Number encapsulates bool, int, float, complex, decimal.Decimal, etc.
 try:
@@ -67,7 +70,7 @@ def make_type_name(value):
     try:
         return type(value).__name__
     except Exception:
-        return str(type(value))
+        return str(type(value))[8:-2]
 
 def get_line_code():
     # Load in extract_stack, or provide shim for environments without it.
@@ -155,12 +158,12 @@ def assert_equal(x, y, precision=4, exact_strings=False, *args):
     if result is None:
         student_tests.failures += 1
         print(MESSAGE_UNRELATED_TYPES.format(context=context,
-                                             x=x, x_type=make_type_name(x),
-                                             y=y, y_type=make_type_name(y)))
+                                             x=repr(x), x_type=make_type_name(x),
+                                             y=repr(y), y_type=make_type_name(y)))
         return False
     elif not result:
         student_tests.failures += 1
-        print(MESSAGE_GENERIC_FAILURE.format(context=context, x=x, y=y))
+        print(MESSAGE_GENERIC_FAILURE.format(context=context, x=repr(x), y=repr(y)))
         return False
     elif not QUIET:
         print(MESSAGE_GENERIC_SUCCESS.format(context=context))

@@ -554,6 +554,7 @@ goog.exportSymbol("Sk.misceval.richCompareBool", Sk.misceval.richCompareBool);
 
 Sk.misceval.objectRepr = function (v) {
     goog.asserts.assert(v !== undefined, "trying to repr undefined");
+    
     if ((v === null) || (v instanceof Sk.builtin.none)) {
         return new Sk.builtin.str("None");
     } else if (v === true) {

@@ -1,5 +1,6 @@
 var format = function (kwa) {
     // following PEP 3101
+    
 
     var a, args, key, kwargs;
     var ret;

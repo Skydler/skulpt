@@ -701,7 +701,7 @@ Sk.builtin.dir.slotNameToRichName = function (k) {
 
 Sk.builtin.repr = function repr (x) {
     Sk.builtin.pyCheckArgs("repr", arguments, 1, 1);
-
+    
     return Sk.misceval.objectRepr(x);
 };
 
