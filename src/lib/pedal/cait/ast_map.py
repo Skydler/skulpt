@@ -60,6 +60,7 @@ class AstMap:
         self.func_table = {}
         self.conflict_keys = []
         self.match_root = None
+        self.diagnosis = ""
 
     def add_func_to_sym_table(self, ins_node, std_node):
         """
@@ -81,17 +82,26 @@ class AstMap:
             key = ins_node
         else:
             try:
-                key = ins_node.astNode.name
+                if ins_node.ast_name == "FunctionDef":
+                    key = ins_node.astNode.name
+                else:  # TODO: Little skulpt artifact that doesn't raise Attribute Errors...
+                    key = ins_node._id
+                    raise AttributeError
             except AttributeError:
-                key = ins_node.astNode.id
+                key = ins_node.astNode._id
+
         try:
-            value = AstSymbol(std_node.astNode.name, std_node)
+            if std_node.ast_name == "FunctionDef":
+                value = AstSymbol(std_node.astNode.name, std_node)
+            else:  # TODO: Little skulpt artifact that doesn't raise Attribute Errors...
+                raise AttributeError
+#            value = AstSymbol(std_node.astNode.name, std_node)
         except AttributeError:
             node = std_node
             if type(node.astNode).__name__ != "Call":
                 node = node.parent
-                node.id = std_node.id
-            value = AstSymbol(std_node.id, node)
+                node._id = std_node._id
+            value = AstSymbol(std_node._id, node)
         if key in self.func_table:
             new_list = self.func_table[key]
             if value not in new_list:
@@ -110,7 +120,7 @@ class AstMap:
 
     def add_var_to_sym_table(self, ins_node, std_node):
         """
-        Adds ins_node.id to the symbol table if it doesn't already exist, mapping it to a set of ins_node. Updates a
+        Adds ins_node._id to the symbol table if it doesn't already exist, mapping it to a set of ins_node. Updates a
         second dictionary that maps ins_node to an std_node, and overwrites the current std_node since there should only
         be one mapping.
 
@@ -127,14 +137,14 @@ class AstMap:
         if isinstance(ins_node, str):
             key = ins_node
         else:
-            key = ins_node.astNode.id
-        value = AstSymbol(std_node.astNode.id, std_node)
+            key = ins_node.astNode._id
+        value = AstSymbol(std_node.astNode._id, std_node)
         if key in self.symbol_table:
             new_list = self.symbol_table[key]
             new_list.append(value)
             if not (key in self.conflict_keys):
                 for other in new_list:
-                    if value.id != other.id:
+                    if value._id != other._id:
                         self.conflict_keys.append(key)
                         break
         else:
